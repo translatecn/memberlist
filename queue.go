@@ -7,24 +7,17 @@ import (
 	"github.com/google/btree"
 )
 
-// TransmitLimitedQueue is used to queue messages to broadcast to
-// the cluster (via gossip) but limits the number of transmits per
-// message. It also prioritizes messages with lower transmit counts
-// (hence newer messages).
+// TransmitLimitedQueue
+// 用于对消息进行队列，以便(通过gossip)向集群广播，但限制每条消息的传输数量。它还对传输计数较低的消息(因此是较新的消息)进行优先级排序。
 type TransmitLimitedQueue struct {
-	// NumNodes returns the number of nodes in the cluster. This is
-	// used to determine the retransmit count, which is calculated
-	// based on the log of this.
+	// NumNodes 返回集群中的节点数。这用于确定根据此日志计算的重传计数。
 	NumNodes func() int
-
-	// RetransmitMult is the multiplier used to determine the maximum
-	// number of retransmissions attempted.
+	// RetransmitMult 用于确定重传的最大次数的 重传系数。
 	RetransmitMult int
-
-	mu    sync.Mutex
-	tq    *btree.BTree // stores *limitedBroadcast as btree.Item
-	tm    map[string]*limitedBroadcast
-	idGen int64
+	mu             sync.Mutex
+	tq             *btree.BTree // stores *limitedBroadcast as btree.Item
+	tm             map[string]*limitedBroadcast
+	idGen          int64
 }
 
 type limitedBroadcast struct {

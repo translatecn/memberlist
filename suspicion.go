@@ -11,29 +11,25 @@ type suspicion struct {
 	// N是我们看到的独立确认的数量。这必须使用原子指令更新，以防止与定时器回调争用。
 	n int32
 
-	//
+	// K是我们希望看到的独立确认的数量，以便将计时器驱动到它的最小值。
 	k int32
 
-	// min is the minimum timer value.
+	// min 定时器最小值
 	min time.Duration
 
-	// max is the maximum timer value.
+	// max 定时器最大值
 	max time.Duration
 
-	// start captures the timestamp when we began the timer. This is used
-	// so we can calculate durations to feed the timer during updates in
-	// a way the achieves the overall time we'd like.
+	// start 开始计时时的时间戳。这样我们就可以在更新期间计算持续时间，以达到我们想要的总时间。
 	start time.Time
 
-	// timer is the underlying timer that implements the timeout.
+	// timer 是实现超时的底层计时器。
 	timer *time.Timer
 
-	// f is the function to call when the timer expires. We hold on to this
-	// because there are cases where we call it directly.
+	// F是计时器到期时要调用的函数。我们持有它是因为有些情况下我们直接调用它。
 	timeoutFn func()
 
-	// confirmations is a map of "from" nodes that have confirmed a given
-	// node is suspect. This prevents double counting.
+	// 已确认给定节点可疑的“from”节点的映射。这可以防止重复计算。
 	confirmations map[string]struct{}
 }
 

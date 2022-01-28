@@ -200,7 +200,7 @@ func newMemberlist(conf *Config) (*Members, error) {
 		lowPriorityMsgQueue:  list.New(), // 低优先级消息队列
 		nodeMap:              make(map[string]*nodeState),
 		nodeTimers:           make(map[string]*suspicion),
-		awareness:            newAwareness(conf.AwarenessMaxMultiplier),
+		awareness:            newAwareness(conf.AwarenessMaxMultiplier), // 感知对象
 		ackHandlers:          make(map[uint32]*ackHandler),
 		broadcasts:           &TransmitLimitedQueue{RetransmitMult: conf.RetransmitMult},
 		logger:               logger,

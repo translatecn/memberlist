@@ -11,19 +11,18 @@ import (
 // local node. Health is primary the node's ability to respond in the soft
 // real-time manner required for correct health checking of other nodes in the
 // cluster.
+// 管理用于跟踪本地节点的估计运行状况的简单指标。运行状况是节点以软实时方式响应的主要能力，这是正确检查集群中其他节点的运行状况所必需的。
 type awareness struct {
 	sync.RWMutex
 
-	// max is the upper threshold for the timeout scale (the score will be
-	// constrained to be from 0 <= score < max).
+	// max 超时范围的上限阈值是多少 ( 0 <= score < max).
 	max int
 
-	// score is the current awareness score. Lower values are healthier and
-	// zero is the minimum value.
+	// 感知分数、低值是健康的>=0
 	score int
 }
 
-// newAwareness returns a new awareness object.
+// newAwareness 感知对象
 func newAwareness(max int) *awareness {
 	return &awareness{
 		max:   max,

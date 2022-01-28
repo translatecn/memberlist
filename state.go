@@ -57,7 +57,7 @@ func (n *Node) String() string {
 	return n.Name
 }
 
-// NodeState is used to manage our state view of another node
+// NodeState 管理其他节点的状态视图
 type nodeState struct {
 	Node
 	Incarnation uint32        // Last known incarnation number
