@@ -10,7 +10,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/armon/go-metrics"
 	sockaddr "github.com/hashicorp/go-sockaddr"
 )
 
@@ -109,49 +108,47 @@ func NewNetTransport(config *NetTransportConfig) (*NetTransport, error) {
 
 // GetAutoBindPort 返回一个随机端口
 func (t *NetTransport) GetAutoBindPort() int {
+	fmt.Println("GetAutoBindPort------>:", t.tcpListeners[0].Addr().(*net.TCPAddr).Port)
 	return t.tcpListeners[0].Addr().(*net.TCPAddr).Port
 }
 
-// FinalAdvertiseAddr 返回公告地址.
+// FinalAdvertiseAddr 返回广播地址.
 func (t *NetTransport) FinalAdvertiseAddr(ip string, port int) (net.IP, int, error) {
 	var advertiseAddr net.IP
 	var advertisePort int
 	if ip != "" {
-		// If they've supplied an address, use that.
 		advertiseAddr = net.ParseIP(ip)
 		if advertiseAddr == nil {
-			return nil, 0, fmt.Errorf("Failed to parse advertise address %q", ip)
+			return nil, 0, fmt.Errorf("解析通信地址失败 %q", ip)
 		}
 
-		// Ensure IPv4 conversion if necessary.
+		// 必要时确保IPv4转换。
 		if ip4 := advertiseAddr.To4(); ip4 != nil {
 			advertiseAddr = ip4
 		}
 		advertisePort = port
 	} else {
 		if t.config.BindAddrs[0] == "0.0.0.0" {
-			// Otherwise, if we're not bound to a specific IP, let's
-			// use a suitable private IP address.
+			// 否则，如果我们没有绑定到特定的IP，我们就使用合适的私有IP地址。
 			var err error
 			ip, err = sockaddr.GetPrivateIP()
 			if err != nil {
-				return nil, 0, fmt.Errorf("Failed to get interface addresses: %v", err)
+				return nil, 0, fmt.Errorf("获取通信地址失败: %v", err)
 			}
 			if ip == "" {
-				return nil, 0, fmt.Errorf("No private IP address found, and explicit IP not provided")
+				return nil, 0, fmt.Errorf("没有找到私有IP地址，也没有提供显式IP")
 			}
 
 			advertiseAddr = net.ParseIP(ip)
 			if advertiseAddr == nil {
-				return nil, 0, fmt.Errorf("Failed to parse advertise address: %q", ip)
+				return nil, 0, fmt.Errorf("无法解析广播地址: %q", ip)
 			}
 		} else {
-			// Use the IP that we're bound to, based on the first
-			// TCP listener, which we already ensure is there.
+			// 根据第一个TCP侦听器，使用我们绑定到的IP，我们已经确保它存在。
 			advertiseAddr = t.tcpListeners[0].Addr().(*net.TCPAddr).IP
 		}
 
-		// Use the port we are bound to.
+		// 使用绑定的端口
 		advertisePort = t.GetAutoBindPort()
 	}
 
@@ -326,8 +323,6 @@ func (t *NetTransport) udpListen(udpLn *net.UDPConn) {
 			continue
 		}
 
-		// Ingest the packet.
-		metrics.IncrCounter([]string{"memberlist", "udp", "received"}, float32(n))
 		t.packetCh <- &Packet{
 			Buf:       buf[:n],
 			From:      addr,

@@ -209,7 +209,7 @@ func newMemberlist(conf *Config) (*Members, error) {
 		return m.estNumNodes()
 	}
 
-	// 从transport获得最终的地址，transport可能需要查看我们绑定到哪个地址。我们将在每次发送探活消息时刷新这个。
+	// 设置广播地址
 	if _, _, err := m.refreshAdvertise(); err != nil {
 		return nil, err
 	}
@@ -455,6 +455,7 @@ func (m *Members) getAdvertise() (net.IP, uint16) {
 	return m.advertiseAddr, m.advertisePort
 }
 
+// 设置广播地址
 func (m *Members) setAdvertise(addr net.IP, port int) {
 	m.advertiseLock.Lock()
 	defer m.advertiseLock.Unlock()
@@ -464,7 +465,7 @@ func (m *Members) setAdvertise(addr net.IP, port int) {
 
 // 公布更新
 func (m *Members) refreshAdvertise() (net.IP, int, error) {
-	addr, port, err := m.transport.FinalAdvertiseAddr(m.config.AdvertiseAddr, m.config.AdvertisePort)// "" 8000
+	addr, port, err := m.transport.FinalAdvertiseAddr(m.config.AdvertiseAddr, m.config.AdvertisePort) // "" 8000
 	if err != nil {
 		return nil, 0, fmt.Errorf("获取地址失败: %v", err)
 	}

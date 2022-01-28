@@ -12,7 +12,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	metrics "github.com/armon/go-metrics"
 	"github.com/hashicorp/go-msgpack/codec"
 )
 
@@ -215,26 +214,22 @@ func (m *Members) encryptionVersion() encryptionVersion {
 	}
 }
 
-// streamListen is a long running goroutine that pulls incoming streams from the
-// transport and hands them off for processing.
+// streamListen pull模式, 处理来自其他节点的数据
 func (m *Members) streamListen() {
 	for {
 		select {
 		case conn := <-m.transport.StreamCh():
 			go m.handleConn(conn)
-
 		case <-m.shutdownCh:
 			return
 		}
 	}
 }
 
-// handleConn handles a single incoming stream connection from the transport.
+// handleConn 处理pull模式下的流链接
 func (m *Members) handleConn(conn net.Conn) {
 	defer conn.Close()
-	m.logger.Printf("[DEBUG] memberlist: Stream connection %s", LogConn(conn))
-
-	metrics.IncrCounter([]string{"memberlist", "tcp", "accept"}, 1)
+	m.logger.Printf("[DEBUG] memberlist: 流连接 %s", LogConn(conn))
 
 	conn.SetDeadline(time.Now().Add(m.config.TCPTimeout))
 
@@ -869,7 +864,6 @@ func (m *Members) rawSendMsgPacket(a Address, node *Node, msg []byte) error {
 		msg = buf.Bytes()
 	}
 
-	metrics.IncrCounter([]string{"memberlist", "udp", "sent"}, float32(len(msg)))
 	_, err := m.transport.WriteToAddress(msg, a)
 	return err
 }
@@ -896,9 +890,6 @@ func (m *Members) rawSendMsgStream(conn net.Conn, sendBuf []byte, streamLabel st
 		}
 		sendBuf = crypt
 	}
-
-	// Write out the entire send buffer
-	metrics.IncrCounter([]string{"memberlist", "tcp", "sent"}, float32(len(sendBuf)))
 
 	if n, err := conn.Write(sendBuf); err != nil {
 		return err
@@ -953,7 +944,6 @@ func (m *Members) sendAndReceiveState(a Address, join bool) ([]pushNodeState, []
 	}
 	defer conn.Close()
 	m.logger.Printf("[DEBUG] memberlist: Initiating push/pull sync with: %s %s", a.Name, conn.RemoteAddr())
-	metrics.IncrCounter([]string{"memberlist", "tcp", "connect"}, 1)
 
 	// Send our state
 	if err := m.sendLocalState(conn, join, m.config.Label); err != nil {

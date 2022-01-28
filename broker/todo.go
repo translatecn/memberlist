@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/hashicorp/go-sockaddr"
 	"net"
 )
 
@@ -15,4 +16,8 @@ func main() {
 	fmt.Println(tcpLn.Addr().(*net.TCPAddr).Port)
 	fmt.Println(tcpLn.Addr().(*net.TCPAddr).Port)
 	fmt.Println(tcpLn.Addr().(*net.TCPAddr).Port)
+	fmt.Println(sockaddr.GetPrivateIP())
+	fmt.Println(sockaddr.GetPrivateIP())
+	fmt.Println(sockaddr.GetPrivateIP())
+	fmt.Println(sockaddr.GetPrivateIP())
 }

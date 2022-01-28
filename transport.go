@@ -53,13 +53,10 @@ type Transport interface {
 	// failed.
 	DialTimeout(addr string, timeout time.Duration) (net.Conn, error)
 
-	// StreamCh returns a channel that can be read to handle incoming stream
-	// connections from other peers. How this is set up for listening is
-	// left as an exercise for the concrete transport implementations.
+	// StreamCh 返回一个通道，可以处理来自其他节点传入流连接。
 	StreamCh() <-chan net.Conn
 
-	// Shutdown is called when memberlist is shutting down; this gives the
-	// transport a chance to clean up any listeners.
+	// Shutdown 停止、清理资源
 	Shutdown() error
 }
 

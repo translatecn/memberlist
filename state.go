@@ -9,8 +9,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-
-	metrics "github.com/armon/go-metrics"
 )
 
 type NodeStateType int
@@ -286,15 +284,11 @@ func failedRemote(err error) bool {
 
 // probeNode handles a single round of failure checking on a node.
 func (m *Members) probeNode(node *nodeState) {
-	defer metrics.MeasureSince([]string{"memberlist", "probeNode"}, time.Now())
 
 	// We use our health awareness to scale the overall probe interval, so we
 	// slow down if we detect problems. The ticker that calls us can handle
 	// us running over the base interval, and will skip missed ticks.
 	probeInterval := m.awareness.ScaleTimeout(m.config.ProbeInterval)
-	if probeInterval > m.config.ProbeInterval {
-		metrics.IncrCounter([]string{"memberlist", "degraded", "probe"}, 1)
-	}
 
 	// Prepare a ping message and setup an ack handler.
 	selfAddr, selfPort := m.getAdvertise()
@@ -573,7 +567,6 @@ func (m *Members) resetNodes() {
 // gossip is invoked every GossipInterval period to broadcast our gossip
 // messages to a few random nodes.
 func (m *Members) gossip() {
-	defer metrics.MeasureSince([]string{"memberlist", "gossip"}, time.Now())
 
 	// Get some random live, suspect, or recently dead nodes
 	m.nodeLock.RLock()
@@ -653,7 +646,6 @@ func (m *Members) pushPull() {
 
 // pushPullNode does a complete state exchange with a specific node.
 func (m *Members) pushPullNode(a Address, join bool) error {
-	defer metrics.MeasureSince([]string{"memberlist", "pushPullNode"}, time.Now())
 
 	// Attempt to send and receive with the node
 	remote, userState, err := m.sendAndReceiveState(a, join)
@@ -1124,9 +1116,6 @@ func (m *Members) aliveNode(a *alive, notify chan struct{}, bootstrap bool) {
 		}
 	}
 
-	// Update metrics
-	metrics.IncrCounter([]string{"memberlist", "msg", "alive"}, 1)
-
 	// Notify the delegate of any relevant updates
 	if m.config.Events != nil {
 		if oldState == StateDead || oldState == StateLeft {
@@ -1182,9 +1171,6 @@ func (m *Members) suspectNode(s *suspect) {
 		m.encodeAndBroadcast(s.Node, suspectMsg, s)
 	}
 
-	// Update metrics
-	metrics.IncrCounter([]string{"memberlist", "msg", "suspect"}, 1)
-
 	// Update the state
 	state.Incarnation = s.Incarnation
 	state.State = StateSuspect
@@ -1220,10 +1206,6 @@ func (m *Members) suspectNode(s *suspect) {
 		m.nodeLock.Unlock()
 
 		if timeout {
-			if k > 0 && numConfirmations < k {
-				metrics.IncrCounter([]string{"memberlist", "degraded", "timeout"}, 1)
-			}
-
 			m.logger.Printf("[INFO] memberlist: Marking %s as failed, suspect timeout reached (%d peer confirmations)",
 				state.Name, numConfirmations)
 
@@ -1272,9 +1254,6 @@ func (m *Members) deadNode(d *dead) {
 	} else {
 		m.encodeAndBroadcast(d.Node, deadMsg, d)
 	}
-
-	// Update metrics
-	metrics.IncrCounter([]string{"memberlist", "msg", "dead"}, 1)
 
 	// Update the state
 	state.Incarnation = d.Incarnation
