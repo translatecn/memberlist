@@ -22,7 +22,6 @@ type Config struct {
 	Transport Transport
 
 	// Label 是一个可选的字节集，要包含在每个包和流的外部。
-	//
 	// 如果gossip启用了加密，并且设置了这个值，则将其视为经过GCM认证的数据。
 	Label string
 
@@ -47,117 +46,60 @@ type Config struct {
 	//todo 在直接探测失败的情况下，将请求执行对节点的间接探测的节点数。
 	IndirectChecks int
 
-	// RetransmitMult is the multiplier for the number of retransmissions
-	// that are attempted for messages broadcasted over gossip. The actual
-	// count of retransmissions is calculated using the formula:
-	//
+	// RetransmitMult 是对通过gossip广播的信息尝试重传的倍数。实际的重传次数是用公式计算的。
 	//   Retransmits = RetransmitMult * log(N+1)
-	//
-	// This allows the retransmits to scale properly with cluster size. The
-	// higher the multiplier, the more likely a failed broadcast is to converge
-	// at the expense of increased bandwidth.
+	// 这使得重传可以随着集群的大小而适当扩展。倍数越高，失败的消息就越有可能以增加带宽为代价。
 	RetransmitMult int
 
-	// SuspicionMult is the multiplier for determining the time an
-	// inaccessible node is considered suspect before declaring it dead.
-	// The actual timeout is calculated using the formula:
-	//
+	// SuspicionMult 是确定无法访问的节点在宣布其死亡之前被认为是可疑的时间的乘数。
+	// 实际的超时是用公式计算的。
 	//   SuspicionTimeout = SuspicionMult * log(N+1) * ProbeInterval
-	//
-	// This allows the timeout to scale properly with expected propagation
-	// delay with a larger cluster size. The higher the multiplier, the longer
-	// an inaccessible node is considered part of the cluster before declaring
-	// it dead, giving that suspect node more time to refute if it is indeed
-	// still alive.
+	// 这允许超时与预期的传播延迟在较大的集群规模下适当扩展。
+	// 乘数越高，在宣布一个无法访问的节点死亡之前，它被认为是集群的一部分的时间就越长，
+	// 如果这个可疑的节点确实还活着，就有更多的时间来反驳。
 	SuspicionMult int
 
-	// SuspicionMaxTimeoutMult is the multiplier applied to the
-	// SuspicionTimeout used as an upper bound on detection time. This max
-	// timeout is calculated using the formula:
-	//
-	// SuspicionMaxTimeout = SuspicionMaxTimeoutMult * SuspicionTimeout
-	//
-	// If everything is working properly, confirmations from other nodes will
-	// accelerate suspicion timers in a manner which will cause the timeout
-	// to reach the base SuspicionTimeout before that elapses, so this value
-	// will typically only come into play if a node is experiencing issues
-	// communicating with other nodes. It should be set to a something fairly
-	// large so that a node having problems will have a lot of chances to
-	// recover before falsely declaring other nodes as failed, but short
-	// enough for a legitimately isolated node to still make progress marking
-	// nodes failed in a reasonable amount of time.
+	// SuspicionMaxTimeoutMult 是应用于SuspicionTimeout的乘数，作为检测时间的上限。
+	// 这个最大的超时时间是用公式计算的。
+	// SuspicionMaxTimeout = SuspicionMaxTimeoutMult * SuspicionTimeoutv
+	// 如果一切工作正常，来自其他节点的确认将加速怀疑计时器，这将导致超时在其结束前达到基本SuspicionTimeout，
+	// 所以这个值通常只在一个节点遇到与其他节点通信的问题时才会发挥作用。
+	// 它应该被设置为一个相当大的值，以便出现问题的节点在错误地宣布其他节点失败之前有很多机会恢复，
+	// 但又足够短，以便合法隔离的节点仍然能够在合理的时间内取得进展，标记节点失败。
 	SuspicionMaxTimeoutMult int
 
-	// PushPullInterval is the interval between complete state syncs.
-	// Complete state syncs are done with a single node over TCP and are
-	// quite expensive relative to standard gossiped messages. Setting this
-	// to zero will disable state push/pull syncs completely.
-	//
-	// Setting this interval lower (more frequent) will increase convergence
-	// speeds across larger clusters at the expense of increased bandwidth
-	// usage.
+	// 是完整状态同步的间隔时间。
 	PushPullInterval time.Duration
 
-	// ProbeInterval and ProbeTimeout are used to configure probing
-	// behavior for memberlist.
-	//
-	// ProbeInterval is the interval between random node probes. Setting
-	// this lower (more frequent) will cause the memberlist cluster to detect
-	// failed nodes more quickly at the expense of increased bandwidth usage.
-	//
-	// ProbeTimeout is the timeout to wait for an ack from a probed node
-	// before assuming it is unhealthy. This should be set to 99-percentile
-	// of RTT (round-trip time) on your network.
+	// 随机节点探活;设置得更低（更频繁）将导致成员列表集群更快地检测到故障节点，代价是增加带宽使用。
 	ProbeInterval time.Duration
-	ProbeTimeout  time.Duration
+	// 是指在假定被探测的节点不健康之前，等待被探测的节点发出Ack的超时。
+	// 这应该被设置为你的网络上RTT（往返时间）的第99百分位数。你的网络上的RTT（往返时间）。
+	ProbeTimeout time.Duration
 
-	// DisableTcpPings will turn off the fallback TCP pings that are attempted
-	// if the direct UDP ping fails. These get pipelined along with the
-	// indirect UDP pings.
+	// 当UDP ping失败时,关闭TCP ping ;控制所有
 	DisableTcpPings bool
 
-	// DisableTcpPingsForNode is like DisableTcpPings, but lets you control
-	// whether to perform TCP pings on a node-by-node basis.
+	// 当UDP ping失败时,关闭TCP ping ;控制单个节点
 	DisableTcpPingsForNode func(nodeName string) bool
 
-	// AwarenessMaxMultiplier will increase the probe interval if the node
-	// becomes aware that it might be degraded and not meeting the soft real
-	// time requirements to reliably probe other nodes.
+	// AwarenessMaxMultiplier
+	// 当节点意识到自己可能降级，无法满足可靠探测其他节点的软实时要求时，会增加探测间隔。
 	AwarenessMaxMultiplier int
 
-	// GossipInterval and GossipNodes are used to configure the gossip
-	// behavior of memberlist.
-	//
-	// GossipInterval is the interval between sending messages that need
-	// to be gossiped that haven't been able to piggyback on probing messages.
-	// If this is set to zero, non-piggyback gossip is disabled. By lowering
-	// this value (more frequent) gossip messages are propagated across
-	// the cluster more quickly at the expense of increased bandwidth.
-	//
-	// GossipNodes is the number of random nodes to send gossip messages to
-	// per GossipInterval. Increasing this number causes the gossip messages
-	// to propagate across the cluster more quickly at the expense of
-	// increased bandwidth.
-	//
-	// GossipToTheDeadTime is the interval after which a node has died that
-	// we will still try to gossip to it. This gives it a chance to refute.
-	GossipInterval      time.Duration
-	GossipNodes         int
+	// GossipInterval 节点间消息探测的间隔
+	GossipInterval time.Duration
+	// 每个GossipInterval内，将gossip消息随机发送到几个节点. 增加它会使消息同步的越快，但是会增加带宽
+	GossipNodes int
+
+	// GossipToTheDeadTime node失败后，继续探测的时间
 	GossipToTheDeadTime time.Duration
 
-	// GossipVerifyIncoming controls whether to enforce encryption for incoming
-	// gossip. It is used for upshifting from unencrypted to encrypted gossip on
-	// a running cluster.
+	// 控制是否对gossip进行加密。它用于在运行的集群上从未加密的gossip转移到加密的gossip。
 	GossipVerifyIncoming bool
-
-	// GossipVerifyOutgoing controls whether to enforce encryption for outgoing
-	// gossip. It is used for upshifting from unencrypted to encrypted gossip on
-	// a running cluster.
 	GossipVerifyOutgoing bool
 
-	// EnableCompression is used to control message compression. This can
-	// be used to reduce bandwidth usage at the cost of slightly more CPU
-	// utilization. This is only available starting at 协议版本 1.
+	// 是否启用消息压缩
 	EnableCompression bool
 
 	// SecretKey 加密秘钥
@@ -166,69 +108,42 @@ type Config struct {
 	// 钥匙环存放着内部使用的所有加密钥匙。它使用SecretKey和SecretKeys值自动进行初始化。
 	Keyring *Keyring
 
-	// Delegate and Events are delegates for receiving and providing
-	// data to memberlist via callback mechanisms. For Delegate, see
-	// the Delegate interface. For Events, see the EventDelegate interface.
-	//
-	// The DelegateProtocolMin/Max are used to guarantee protocol-compatibility
-	// for any custom messages that the delegate might do (broadcasts,
-	// local/remote state, etc.). If you don't set these, then the protocol
-	// versions will just be zero, and version compliance won't be done.
-	Delegate                Delegate
+	// Delegate和Events是通过回调机制接收和提供数据给memberlist的。
+	Delegate                Delegate // 委托
 	DelegateProtocolVersion uint8
 	DelegateProtocolMin     uint8
 	DelegateProtocolMax     uint8
 	Events                  EventDelegate
-	Conflict                ConflictDelegate
-	Merge                   MergeDelegate
-	Ping                    PingDelegate
-	Alive                   AliveDelegate
 
-	// DNSConfigPath points to the system's DNS config file, usually located
-	// at /etc/resolv.conf. It can be overridden via config for easier testing.
+	Conflict ConflictDelegate // 配置
+	Merge    MergeDelegate    // 合并
+	Ping     PingDelegate     // ping
+	Alive    AliveDelegate    // 探活
+
+	// dns 配置文件
 	DNSConfigPath string
 
-	// LogOutput is the writer where logs should be sent. If this is not
-	// set, logging will go to stderr by default. You cannot specify both LogOutput
-	// and Logger at the same time.
 	LogOutput io.Writer
 
-	// Logger is a custom logger which you provide. If Logger is set, it will use
-	// this for the internal logger. If Logger is not set, it will fall back to the
-	// behavior for using LogOutput. You cannot specify both LogOutput and Logger
-	// at the same time.
 	Logger *log.Logger
 
-	// Size of Memberlist's internal channel which handles UDP messages. The
-	// size of this determines the size of the queue which Memberlist will keep
-	// while UDP messages are handled.
+	// UDP消息队列,取决于消息的大小
 	HandoffQueueDepth int
 
-	// Maximum number of bytes that memberlist will put in a packet (this
-	// will be for UDP packets by default with a NetTransport). A safe value
-	// for this is typically 1400 bytes (which is the default). However,
-	// depending on your network's MTU (Maximum Transmission Unit) you may
-	// be able to increase this to get more content into each gossip packet.
-	// This is a legacy name for backward compatibility but should really be
-	// called PacketBufferSize now that we have generalized the transport.
+	// 写缓冲大小
 	UDPBufferSize int
 
-	// DeadNodeReclaimTime controls the time before a dead node's name can be
-	// reclaimed by one with a different address or port. By default, this is 0,
-	// meaning nodes cannot be reclaimed this way.
+	// 控制一个死亡节点的名字可以被不同地址或端口的节点回收的时间。默认情况下，该值为0，意味着节点不能以这种方式被回收。
 	DeadNodeReclaimTime time.Duration
 
-	// RequireNodeNames controls if the name of a node is required when sending
-	// a message to that node.
+	// RequireNodeNames 控制在发送一个消息到节点时,是否需要节点的名称。
 	RequireNodeNames bool
-	// CIDRsAllowed If nil, allow any connection (default), otherwise specify all networks
-	// allowed to connect (you must specify IPv6/IPv4 separately)
-	// Using [] will block all connections.
+
+	// CIDRsAllowed nil,允许所有链接,[]拒绝所有链接
 	CIDRsAllowed []net.IPNet
 }
 
-// ParseCIDRs return a possible empty list of all Network that have been parsed
-// In case of error, it returns succesfully parsed CIDRs and the last error found
+// ParseCIDRs 解析CIDR 列表,返回第一个解析错误   【192.0.2.1/24】
 func ParseCIDRs(v []string) ([]net.IPNet, error) {
 	nets := make([]net.IPNet, 0)
 	if v == nil {
@@ -252,12 +167,9 @@ func ParseCIDRs(v []string) ([]net.IPNet, error) {
 	return nets, errs
 }
 
-// DefaultLANConfig returns a sane set of configurations for Memberlist.
-// It uses the hostname as the node name, and otherwise sets very conservative
-// values that are sane for most LAN environments. The default configuration
-// errs on the side of caution, choosing values that are optimized
-// for higher convergence at the cost of higher bandwidth usage. Regardless,
-// these values are a good starting point when getting started with memberlist.
+// DefaultLANConfig
+// 为Memberlist返回一套合理的配置。它使用主机名作为节点名称，除此之外，还设置了非常保守的值，
+// 对大多数局域网环境来说是合理的。默认配置偏向于谨慎，选择了以更高带宽使用为代价的优化值，以实现更高的收敛性。不管怎么说，在开始使用成员列表时，这些值是一个很好的出发点。
 func DefaultLANConfig() *Config {
 	hostname, _ := os.Hostname()
 	return &Config{
@@ -267,27 +179,27 @@ func DefaultLANConfig() *Config {
 		AdvertiseAddr:           "",
 		AdvertisePort:           7946,
 		ProtocolVersion:         ProtocolVersion2Compatible,
-		TCPTimeout:              10 * time.Second,       // Timeout after 10 seconds
-		IndirectChecks:          3,                      // Use 3 nodes for the indirect ping
-		RetransmitMult:          4,                      // Retransmit a message 4 * log(N+1) nodes
-		SuspicionMult:           4,                      // Suspect a node for 4 * log(N+1) * Interval
-		SuspicionMaxTimeoutMult: 6,                      // For 10k nodes this will give a max timeout of 120 seconds
-		PushPullInterval:        30 * time.Second,       // Low frequency
-		ProbeTimeout:            500 * time.Millisecond, // Reasonable RTT time for LAN
-		ProbeInterval:           1 * time.Second,        // Failure check every second
-		DisableTcpPings:         false,                  // TCP pings are safe, even with mixed versions
-		AwarenessMaxMultiplier:  8,                      // Probe interval backs off to 8 seconds
+		TCPTimeout:              10 * time.Second,
+		IndirectChecks:          3,                      // 使用3个节点进行间接Ping
+		RetransmitMult:          4,                      // 转发消息至4 * log(N+1) 个节点
+		SuspicionMult:           4,                      // 节点不可靠4 * log(N+1) * Interval
+		SuspicionMaxTimeoutMult: 6,                      // 对于超大集群、会给一个最大的超时时间120s
+		PushPullInterval:        30 * time.Second,       // 低频
+		ProbeTimeout:            500 * time.Millisecond, // 可以响应的往返时间
+		ProbeInterval:           1 * time.Second,        // 每一秒进行失败检查
+		DisableTcpPings:         false,                  // TCP ping是安全的，即使有混合版本
+		AwarenessMaxMultiplier:  8,                      //  探测间隔退至8秒
 
-		GossipNodes:          3,                      // Gossip to 3 nodes
-		GossipInterval:       200 * time.Millisecond, // Gossip more rapidly
-		GossipToTheDeadTime:  30 * time.Second,       // Same as push/pull
-		GossipVerifyIncoming: true,
-		GossipVerifyOutgoing: true,
+		GossipNodes:          3,                      // 集群有3个节点
+		GossipInterval:       200 * time.Millisecond, // 传播事件
+		GossipToTheDeadTime:  30 * time.Second,       // 往返时间
+		GossipVerifyIncoming: true,                   // 验证入栈流量
+		GossipVerifyOutgoing: true,                   // 验证出站流量
 
-		EnableCompression: true, // Enable compression by default
+		EnableCompression: true, // 允许压缩
 
-		SecretKey: nil,
-		Keyring:   nil,
+		SecretKey: nil, // 秘钥
+		Keyring:   nil, // 秘钥环
 
 		DNSConfigPath: "/etc/resolv.conf",
 
@@ -312,12 +224,12 @@ func DefaultWANConfig() *Config {
 	return conf
 }
 
-// IPMustBeChecked return true if IPAllowed must be called
+// IPMustBeChecked 是否检查CIDR块
 func (c *Config) IPMustBeChecked() bool {
 	return len(c.CIDRsAllowed) > 0
 }
 
-// IPAllowed return an error if access to memberlist is denied
+// IPAllowed 检查该IP是否允许
 func (c *Config) IPAllowed(ip net.IP) error {
 	if !c.IPMustBeChecked() {
 		return nil
@@ -327,7 +239,7 @@ func (c *Config) IPAllowed(ip net.IP) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("%s is not allowed", ip)
+	return fmt.Errorf("%s 不被允许", ip)
 }
 
 // DefaultLocalConfig 的工作原理与DefaultConfig类似，但它会返回一个为本地环回环境优化的配置。
