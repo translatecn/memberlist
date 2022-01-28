@@ -270,7 +270,7 @@ func TestMemberList_ProbeNode_FallbackTCP(t *testing.T) {
 	a3 := alive{Node: addr3.String(), Addr: ip3, Port: uint16(bindPort), Incarnation: 1}
 	m1.aliveNode(&a3, nil, false)
 
-	// Make sure m4 is configured with the same protocol version as m1 so
+	// Make sure m4 is configured with the same 协议版本 as m1 so
 	// the TCP fallback behavior is enabled.
 	a4 := alive{
 		Node:        addr4.String(),
@@ -396,7 +396,7 @@ func TestMemberList_ProbeNode_FallbackTCP_Disabled(t *testing.T) {
 	a3 := alive{Node: addr3.String(), Addr: ip3, Port: uint16(bindPort), Incarnation: 1}
 	m1.aliveNode(&a3, nil, false)
 
-	// Make sure m4 is configured with the same protocol version as m1 so
+	// Make sure m4 is configured with the same 协议版本 as m1 so
 	// the TCP fallback behavior is enabled.
 	a4 := alive{
 		Node:        addr4.String(),

@@ -60,6 +60,7 @@ func yield() {
 	time.Sleep(250 * time.Millisecond)
 }
 
+// 虚拟委托
 type MockDelegate struct {
 	mu          sync.Mutex
 	meta        []byte

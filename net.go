@@ -16,14 +16,14 @@ import (
 	"github.com/hashicorp/go-msgpack/codec"
 )
 
-// This is the minimum and maximum protocol version that we can
+// This is the minimum and maximum 协议版本 that we can
 // _understand_. We're allowed to speak at any version within this
 // range. This range is inclusive.
 const (
 	ProtocolVersionMin uint8 = 1
 
 	// Version 3 added support for TCP pings but we kept the default
-	// protocol version at 2 to ease transition to this new feature.
+	// 协议版本 at 2 to ease transition to this new feature.
 	// A memberlist speaking version 2 of the protocol will attempt
 	// to TCP ping another memberlist who understands version 3 or
 	// greater.
@@ -188,7 +188,7 @@ type pushNodeState struct {
 	Meta        []byte
 	Incarnation uint32
 	State       NodeStateType
-	Vsn         []uint8 // Protocol versions
+	Vsn         []uint8 // 协议版本s
 }
 
 // compress is used to wrap an underlying payload

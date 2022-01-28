@@ -80,23 +80,20 @@ type Memberlist struct {
 }
 
 // BuildVsnArray creates the array of Vsn
-func (conf *Config) BuildVsnArray() []uint8 {
+func (c *Config) BuildVsnArray() []uint8 {
 	return []uint8{
-		ProtocolVersionMin, ProtocolVersionMax, conf.ProtocolVersion,
-		conf.DelegateProtocolMin, conf.DelegateProtocolMax,
-		conf.DelegateProtocolVersion,
+		ProtocolVersionMin, ProtocolVersionMax, c.ProtocolVersion,
+		c.DelegateProtocolMin, c.DelegateProtocolMax,
+		c.DelegateProtocolVersion,
 	}
 }
 
-// newMemberlist creates the network listeners.
-// Does not schedule execution of background maintenance.
+// newMemberlist 创建网络监听器,只能在主线程被调度
 func newMemberlist(conf *Config) (*Memberlist, error) {
 	if conf.ProtocolVersion < ProtocolVersionMin {
-		return nil, fmt.Errorf("Protocol version '%d' too low. Must be in range: [%d, %d]",
-			conf.ProtocolVersion, ProtocolVersionMin, ProtocolVersionMax)
+		return nil, fmt.Errorf("协议版本 '%d' 太小. 必须在这个范围: [%d, %d]", conf.ProtocolVersion, ProtocolVersionMin, ProtocolVersionMax)
 	} else if conf.ProtocolVersion > ProtocolVersionMax {
-		return nil, fmt.Errorf("Protocol version '%d' too high. Must be in range: [%d, %d]",
-			conf.ProtocolVersion, ProtocolVersionMin, ProtocolVersionMax)
+		return nil, fmt.Errorf("协议版本 '%d' 太高. 必须在这个范围: [%d, %d]", conf.ProtocolVersion, ProtocolVersionMin, ProtocolVersionMax)
 	}
 
 	if len(conf.SecretKey) > 0 {
@@ -117,7 +114,7 @@ func newMemberlist(conf *Config) (*Memberlist, error) {
 	}
 
 	if conf.LogOutput != nil && conf.Logger != nil {
-		return nil, fmt.Errorf("Cannot specify both LogOutput and Logger. Please choose a single log configuration setting.")
+		return nil, fmt.Errorf("不能同时指定LogOutput和Logger。请选择一个单一的日志配置设置。")
 	}
 
 	logDest := conf.LogOutput
@@ -130,17 +127,16 @@ func newMemberlist(conf *Config) (*Memberlist, error) {
 		logger = log.New(logDest, "", log.LstdFlags)
 	}
 
-	// Set up a network transport by default if a custom one wasn't given
-	// by the config.
-	transport := conf.Transport
+	// 如果配置中没有给出自定义的网络传输，则默认设置网络传输。
+	transport := conf.Transport // 默认为nil
 	if transport == nil {
 		nc := &NetTransportConfig{
-			BindAddrs: []string{conf.BindAddr},
+			BindAddrs: []string{conf.BindAddr}, // 0.0.0.0
 			BindPort:  conf.BindPort,
 			Logger:    logger,
 		}
 
-		// See comment below for details about the retry in here.
+		// 关于重试的详细信息，请参阅下面的注释。
 		makeNetRetry := func(limit int) (*NetTransport, error) {
 			var err error
 			for try := 0; try < limit; try++ {
@@ -148,21 +144,17 @@ func newMemberlist(conf *Config) (*Memberlist, error) {
 				if nt, err = NewNetTransport(nc); err == nil {
 					return nt, nil
 				}
-				if strings.Contains(err.Error(), "address already in use") {
-					logger.Printf("[DEBUG] memberlist: Got bind error: %v", err)
+				if strings.Contains(err.Error(), "已使用地址") {
+					logger.Printf("[DEBUG] Got bind error: %v", err)
 					continue
 				}
 			}
 
-			return nil, fmt.Errorf("failed to obtain an address: %v", err)
+			return nil, fmt.Errorf("获取地址失败: %v", err)
 		}
 
-		// The dynamic bind port operation is inherently racy because
-		// even though we are using the kernel to find a port for us, we
-		// are attempting to bind multiple protocols (and potentially
-		// multiple addresses) with the same port number. We build in a
-		// few retries here since this often gets transient errors in
-		// busy unit tests.
+		// 动态绑定端口的操作本质上是荒谬的，因为即使我们使用内核为我们找到一个端口，我们也试图用同一个端口号来绑定多个协议（以及潜在的多个地址）。
+		// 我们在这里设置了一些重试，因为这在繁忙的单元测试中经常会出现瞬时错误。
 		limit := 1
 		if conf.BindPort == 0 {
 			limit = 10
@@ -176,7 +168,7 @@ func newMemberlist(conf *Config) (*Memberlist, error) {
 			port := nt.GetAutoBindPort()
 			conf.BindPort = port
 			conf.AdvertisePort = port
-			logger.Printf("[DEBUG] memberlist: Using dynamic bind port %d", port)
+			logger.Printf("[DEBUG] 使用动态绑定端口 %d", port)
 		}
 		transport = nt
 	}
@@ -230,11 +222,7 @@ func newMemberlist(conf *Config) (*Memberlist, error) {
 	return m, nil
 }
 
-// Create will create a new Memberlist using the given configuration.
-// This will not connect to any other node (see Join) yet, but will start
-// all the listeners to allow other nodes to join this memberlist.
-// After creating a Memberlist, the configuration given should not be
-// modified by the user anymore.
+// Create 不会链接其他节点、但会开启listeners,允许其他节点加入；之后Config不应该被改变
 func Create(conf *Config) (*Memberlist, error) {
 	m, err := newMemberlist(conf)
 	if err != nil {
@@ -701,11 +689,11 @@ func (m *Memberlist) GetHealthScore() int {
 	return m.awareness.GetHealthScore()
 }
 
-// ProtocolVersion returns the protocol version currently in use by
+// ProtocolVersion returns the 协议版本 currently in use by
 // this memberlist.
 func (m *Memberlist) ProtocolVersion() uint8 {
 	// NOTE: This method exists so that in the future we can control
-	// any locking if necessary, if we change the protocol version at
+	// any locking if necessary, if we change the 协议版本 at
 	// runtime, etc.
 	return m.config.ProtocolVersion
 }

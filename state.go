@@ -29,11 +29,11 @@ type Node struct {
 	Port  uint16
 	Meta  []byte        // Metadata from the delegate for this node.
 	State NodeStateType // State of the node.
-	PMin  uint8         // Minimum protocol version this understands
-	PMax  uint8         // Maximum protocol version this understands
+	PMin  uint8         // Minimum 协议版本 this understands
+	PMax  uint8         // Maximum 协议版本 this understands
 	PCur  uint8         // Current version node is speaking
-	DMin  uint8         // Min protocol version for the delegate to understand
-	DMax  uint8         // Max protocol version for the delegate to understand
+	DMin  uint8         // Min 协议版本 for the delegate to understand
+	DMax  uint8         // Max 协议版本 for the delegate to understand
 	DCur  uint8         // Current version delegate is speaking
 }
 
@@ -438,7 +438,7 @@ HANDLE_REMOTE_FAILURE:
 	//
 	// This is a little unusual because we will attempt a TCP ping to any
 	// member who understands version 3 of the protocol, regardless of
-	// which protocol version we are speaking. That's why we've included a
+	// which 协议版本 we are speaking. That's why we've included a
 	// config option to turn this off if desired.
 	fallbackCh := make(chan bool, 1)
 
@@ -677,7 +677,7 @@ func (m *Memberlist) pushPullNode(a Address, join bool) error {
 // for the entire cluster.
 //
 // After this, it goes through the entire cluster (local and remote) and
-// verifies that everyone's speaking protocol versions satisfy this range.
+// verifies that everyone's speaking 协议版本s satisfy this range.
 // If this passes, it means that every node can understand each other.
 func (m *Memberlist) verifyProtocol(remote []pushNodeState) error {
 	m.nodeLock.RLock()
@@ -755,13 +755,13 @@ func (m *Memberlist) verifyProtocol(remote []pushNodeState) error {
 
 		if nPCur < maxpmin || nPCur > minpmax {
 			return fmt.Errorf(
-				"Node '%s' protocol version (%d) is incompatible: [%d, %d]",
+				"Node '%s' 协议版本 (%d) is incompatible: [%d, %d]",
 				n.Name, nPCur, maxpmin, minpmax)
 		}
 
 		if nDCur < maxdmin || nDCur > mindmax {
 			return fmt.Errorf(
-				"Node '%s' delegate protocol version (%d) is incompatible: [%d, %d]",
+				"Node '%s' delegate 协议版本 (%d) is incompatible: [%d, %d]",
 				n.Name, nDCur, maxdmin, mindmax)
 		}
 	}
@@ -772,13 +772,13 @@ func (m *Memberlist) verifyProtocol(remote []pushNodeState) error {
 
 		if nPCur < maxpmin || nPCur > minpmax {
 			return fmt.Errorf(
-				"Node '%s' protocol version (%d) is incompatible: [%d, %d]",
+				"Node '%s' 协议版本 (%d) is incompatible: [%d, %d]",
 				n.Name, nPCur, maxpmin, minpmax)
 		}
 
 		if nDCur < maxdmin || nDCur > mindmax {
 			return fmt.Errorf(
-				"Node '%s' delegate protocol version (%d) is incompatible: [%d, %d]",
+				"Node '%s' delegate 协议版本 (%d) is incompatible: [%d, %d]",
 				n.Name, nDCur, maxdmin, mindmax)
 		}
 	}
@@ -943,7 +943,7 @@ func (m *Memberlist) aliveNode(a *alive, notify chan struct{}, bootstrap bool) {
 		pMax := a.Vsn[1]
 		pCur := a.Vsn[2]
 		if pMin == 0 || pMax == 0 || pMin > pMax {
-			m.logger.Printf("[WARN] memberlist: Ignoring an alive message for '%s' (%v:%d) because protocol version(s) are wrong: %d <= %d <= %d should be >0", a.Node, net.IP(a.Addr), a.Port, pMin, pCur, pMax)
+			m.logger.Printf("[WARN] memberlist: Ignoring an alive message for '%s' (%v:%d) because 协议版本(s) are wrong: %d <= %d <= %d should be >0", a.Node, net.IP(a.Addr), a.Port, pMin, pCur, pMax)
 			return
 		}
 	}
@@ -1103,7 +1103,7 @@ func (m *Memberlist) aliveNode(a *alive, notify chan struct{}, bootstrap bool) {
 	} else {
 		m.encodeBroadcastNotify(a.Node, aliveMsg, a, notify)
 
-		// Update protocol versions if it arrived
+		// Update 协议版本s if it arrived
 		if len(a.Vsn) > 0 {
 			state.PMin = a.Vsn[0]
 			state.PMax = a.Vsn[1]

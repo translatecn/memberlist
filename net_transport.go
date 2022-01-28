@@ -24,17 +24,11 @@ const (
 	udpRecvBufSize = 2 * 1024 * 1024
 )
 
-// NetTransportConfig is used to configure a net transport.
+// NetTransportConfig 网络传输的配置
 type NetTransportConfig struct {
-	// BindAddrs is a list of addresses to bind to for both TCP and UDP
-	// communications.
-	BindAddrs []string
-
-	// BindPort is the port to listen on, for each address above.
-	BindPort int
-
-	// Logger is a logger for operator messages.
-	Logger *log.Logger
+	BindAddrs []string // [0.0.0.0]  ,假如本机有多块网卡
+	BindPort  int      // 7946
+	Logger    *log.Logger
 }
 
 // NetTransport is a Transport implementation that uses connectionless UDP for
@@ -52,16 +46,12 @@ type NetTransport struct {
 
 var _ NodeAwareTransport = (*NetTransport)(nil)
 
-// NewNetTransport returns a net transport with the given configuration. On
-// success all the network listeners will be created and listening.
+// NewNetTransport 创建传输端点
 func NewNetTransport(config *NetTransportConfig) (*NetTransport, error) {
-	// If we reject the empty list outright we can assume that there's at
-	// least one listener of each type later during operation.
 	if len(config.BindAddrs) == 0 {
-		return nil, fmt.Errorf("At least one bind address is required")
+		return nil, fmt.Errorf("至少需要一个可以绑定的地址")
 	}
 
-	// Build out the new transport.
 	var ok bool
 	t := NetTransport{
 		config:   config,
@@ -70,14 +60,14 @@ func NewNetTransport(config *NetTransportConfig) (*NetTransport, error) {
 		logger:   config.Logger,
 	}
 
-	// Clean up listeners if there's an error.
+	// 如果有错误、清理监听器
 	defer func() {
 		if !ok {
 			t.Shutdown()
 		}
 	}()
 
-	// Build all the TCP and UDP listeners.
+	// 构建TCP、UDP监听器
 	port := config.BindPort
 	for _, addr := range config.BindAddrs {
 		ip := net.ParseIP(addr)
@@ -85,13 +75,11 @@ func NewNetTransport(config *NetTransportConfig) (*NetTransport, error) {
 		tcpAddr := &net.TCPAddr{IP: ip, Port: port}
 		tcpLn, err := net.ListenTCP("tcp", tcpAddr)
 		if err != nil {
-			return nil, fmt.Errorf("Failed to start TCP listener on %q port %d: %v", addr, port, err)
+			return nil, fmt.Errorf("启动TCP listener失败 %q port %d: %v", addr, port, err)
 		}
 		t.tcpListeners = append(t.tcpListeners, tcpLn)
 
-		// If the config port given was zero, use the first TCP listener
-		// to pick an available port and then apply that to everything
-		// else.
+		// 如果给定的配置端口为零，则使用第一个TCP监听器来挑选一个可用的端口，然后将其应用于其他所有的端口。
 		if port == 0 {
 			port = tcpLn.Addr().(*net.TCPAddr).Port
 		}
@@ -99,10 +87,10 @@ func NewNetTransport(config *NetTransportConfig) (*NetTransport, error) {
 		udpAddr := &net.UDPAddr{IP: ip, Port: port}
 		udpLn, err := net.ListenUDP("udp", udpAddr)
 		if err != nil {
-			return nil, fmt.Errorf("Failed to start UDP listener on %q port %d: %v", addr, port, err)
+			return nil, fmt.Errorf("启动UDP listener失败 %q port %d: %v", addr, port, err)
 		}
 		if err := setUDPRecvBuf(udpLn); err != nil {
-			return nil, fmt.Errorf("Failed to resize UDP buffer: %v", err)
+			return nil, fmt.Errorf("调整UDP缓冲区大小失败: %v", err)
 		}
 		t.udpListeners = append(t.udpListeners, udpLn)
 	}
@@ -118,11 +106,8 @@ func NewNetTransport(config *NetTransportConfig) (*NetTransport, error) {
 	return &t, nil
 }
 
-// GetAutoBindPort returns the bind port that was automatically given by the
-// kernel, if a bind port of 0 was given.
+// GetAutoBindPort 返回一个随机端口
 func (t *NetTransport) GetAutoBindPort() int {
-	// We made sure there's at least one TCP listener, and that one's
-	// port was applied to all the others for the dynamic bind case.
 	return t.tcpListeners[0].Addr().(*net.TCPAddr).Port
 }
 

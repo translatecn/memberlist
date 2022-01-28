@@ -13,54 +13,38 @@ import (
 )
 
 type Config struct {
-	// The name of this node. This must be unique in the cluster.
+	// 此节点的名称。这在集群中必须是唯一的。
 	Name string
 
-	// Transport is a hook for providing custom code to communicate with
-	// other nodes. If this is left nil, then memberlist will by default
-	// make a NetTransport using BindAddr and BindPort from this structure.
+	// Transport
+	// 是一种钩子，用于提供与其他节点通信的自定义代码。
+	// 如果这是空的，那么成员列表将在默认情况下使用这个结构的BindAddr和BindPort创建一个NetTransport。
 	Transport Transport
 
-	// Label is an optional set of bytes to include on the outside of each
-	// packet and stream.
+	// Label 是一个可选的字节集，要包含在每个包和流的外部。
 	//
-	// If gossip encryption is enabled and this is set it is treated as GCM
-	// authenticated data.
+	// 如果gossip启用了加密，并且设置了这个值，则将其视为经过GCM认证的数据。
 	Label string
 
-	// SkipInboundLabelCheck skips the check that inbound packets and gossip
-	// streams need to be label prefixed.
+	// SkipInboundLabelCheck 跳过检查入站数据包和gossip stream 是否需要有标签前缀。
 	SkipInboundLabelCheck bool
 
-	// Configuration related to what address to bind to and ports to
-	// listen on. The port is used for both UDP and TCP gossip. It is
-	// assumed other nodes are running on this port, but they do not need
-	// to.
+	// 绑定的地址和要监听的端口。该端口同时用于UDP和TCP 。假设其他节点在此端口上运行，但它们不需要这样做。
 	BindAddr string
 	BindPort int
 
-	// Configuration related to what address to advertise to other
-	// cluster members. Used for nat traversal.
+	// 向其他集群成员发布的地址。
 	AdvertiseAddr string
 	AdvertisePort int
 
-	// ProtocolVersion is the configured protocol version that we
-	// will _speak_. This must be between ProtocolVersionMin and
-	// ProtocolVersionMax.
+	// ProtocolVersion 通信协议版本
 	ProtocolVersion uint8
 
-	// TCPTimeout is the timeout for establishing a stream connection with
-	// a remote node for a full state sync, and for stream read and write
-	// operations. This is a legacy name for backwards compatibility, but
-	// should really be called StreamTimeout now that we have generalized
-	// the transport.
+	// TCPTimeout 与远程节点建立流连接的超时时间。
 	TCPTimeout time.Duration
 
-	// IndirectChecks is the number of nodes that will be asked to perform
-	// an indirect probe of a node in the case a direct probe fails. Memberlist
-	// waits for an ack from any single indirect node, so increasing this
-	// number will increase the likelihood that an indirect probe will succeed
-	// at the expense of bandwidth.
+	// IndirectChecks
+	//todo 在直接探测失败的情况下，将请求执行对节点的间接探测的节点数。
 	IndirectChecks int
 
 	// RetransmitMult is the multiplier for the number of retransmissions
@@ -173,20 +157,13 @@ type Config struct {
 
 	// EnableCompression is used to control message compression. This can
 	// be used to reduce bandwidth usage at the cost of slightly more CPU
-	// utilization. This is only available starting at protocol version 1.
+	// utilization. This is only available starting at 协议版本 1.
 	EnableCompression bool
 
-	// SecretKey is used to initialize the primary encryption key in a keyring.
-	// The primary encryption key is the only key used to encrypt messages and
-	// the first key used while attempting to decrypt messages. Providing a
-	// value for this primary key will enable message-level encryption and
-	// verification, and automatically install the key onto the keyring.
-	// The value should be either 16, 24, or 32 bytes to select AES-128,
-	// AES-192, or AES-256.
+	// SecretKey 加密秘钥
 	SecretKey []byte
 
-	// The keyring holds all of the encryption keys used internally. It is
-	// automatically initialized using the SecretKey and SecretKeys values.
+	// 钥匙环存放着内部使用的所有加密钥匙。它使用SecretKey和SecretKeys值自动进行初始化。
 	Keyring *Keyring
 
 	// Delegate and Events are delegates for receiving and providing
@@ -320,9 +297,8 @@ func DefaultLANConfig() *Config {
 	}
 }
 
-// DefaultWANConfig works like DefaultConfig, however it returns a configuration
-// that is optimized for most WAN environments. The default configuration is
-// still very conservative and errs on the side of caution.
+// DefaultWANConfig 的工作原理与DefaultConfig类似，但它会返回一个为广域网环境优化的配置。
+// 默认的配置仍然是非常保守的，并在谨慎方面犯了错误。
 func DefaultWANConfig() *Config {
 	conf := DefaultLANConfig()
 	conf.TCPTimeout = 30 * time.Second
@@ -330,7 +306,7 @@ func DefaultWANConfig() *Config {
 	conf.PushPullInterval = 60 * time.Second
 	conf.ProbeTimeout = 3 * time.Second
 	conf.ProbeInterval = 5 * time.Second
-	conf.GossipNodes = 4 // Gossip less frequently, but to an additional node
+	conf.GossipNodes = 4 // Gossip 的频率较低，但对另外一个节点来说
 	conf.GossipInterval = 500 * time.Millisecond
 	conf.GossipToTheDeadTime = 60 * time.Second
 	return conf
@@ -354,9 +330,8 @@ func (c *Config) IPAllowed(ip net.IP) error {
 	return fmt.Errorf("%s is not allowed", ip)
 }
 
-// DefaultLocalConfig works like DefaultConfig, however it returns a configuration
-// that is optimized for a local loopback environments. The default configuration is
-// still very conservative and errs on the side of caution.
+// DefaultLocalConfig 的工作原理与DefaultConfig类似，但它会返回一个为本地环回环境优化的配置。
+// 默认的配置仍然是非常保守的，并在谨慎方面犯了错误。
 func DefaultLocalConfig() *Config {
 	conf := DefaultLANConfig()
 	conf.TCPTimeout = time.Second
@@ -371,7 +346,7 @@ func DefaultLocalConfig() *Config {
 	return conf
 }
 
-// Returns whether or not encryption is enabled
+// EncryptionEnabled 返回是否允许加密
 func (c *Config) EncryptionEnabled() bool {
 	return c.Keyring != nil && len(c.Keyring.GetKeys()) > 0
 }

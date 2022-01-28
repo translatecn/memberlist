@@ -17,33 +17,19 @@ type Keyring struct {
 	l sync.Mutex
 }
 
-// Init allocates substructures
+// 初始化分配了子结构
 func (k *Keyring) init() {
 	k.keys = make([][]byte, 0)
 }
 
-// NewKeyring constructs a new container for a set of encryption keys. The
-// keyring contains all key data used internally by memberlist.
-//
-// While creating a new keyring, you must do one of:
-//   - Omit keys and primary key, effectively disabling encryption
-//   - Pass a set of keys plus the primary key
-//   - Pass only a primary key
-//
-// If only a primary key is passed, then it will be automatically added to the
-// keyring. If creating a keyring with multiple keys, one key must be designated
-// primary by passing it as the primaryKey. If the primaryKey does not exist in
-// the list of secondary keys, it will be automatically added at position 0.
-//
-// A key should be either 16, 24, or 32 bytes to select AES-128,
-// AES-192, or AES-256.
+// NewKeyring 为一组加密密钥构造一个新容器。keyring包含成员列表内部使用的所有密钥数据。
 func NewKeyring(keys [][]byte, primaryKey []byte) (*Keyring, error) {
 	keyring := &Keyring{}
 	keyring.init()
 
 	if len(keys) > 0 || len(primaryKey) > 0 {
 		if len(primaryKey) == 0 {
-			return nil, fmt.Errorf("Empty primary key not allowed")
+			return nil, fmt.Errorf("不允许空主秘钥")
 		}
 		if err := keyring.AddKey(primaryKey); err != nil {
 			return nil, err
@@ -69,18 +55,12 @@ func ValidateKey(key []byte) error {
 	return nil
 }
 
-// AddKey will install a new key on the ring. Adding a key to the ring will make
-// it available for use in decryption. If the key already exists on the ring,
-// this function will just return noop.
-//
-// key should be either 16, 24, or 32 bytes to select AES-128,
-// AES-192, or AES-256.
+// AddKey 添加新的秘钥。如果在环上已经存在，这个函数将只返回noop。
 func (k *Keyring) AddKey(key []byte) error {
 	if err := ValidateKey(key); err != nil {
 		return err
 	}
 
-	// No-op if key is already installed
 	for _, installedKey := range k.keys {
 		if bytes.Equal(installedKey, key) {
 			return nil
@@ -96,8 +76,7 @@ func (k *Keyring) AddKey(key []byte) error {
 	return nil
 }
 
-// UseKey changes the key used to encrypt messages. This is the only key used to
-// encrypt messages, so peers should know this key before this method is called.
+// UseKey 将一个已存在的key设置为主秘钥
 func (k *Keyring) UseKey(key []byte) error {
 	for _, installedKey := range k.keys {
 		if bytes.Equal(key, installedKey) {
@@ -123,13 +102,12 @@ func (k *Keyring) RemoveKey(key []byte) error {
 	return nil
 }
 
-// installKeys will take out a lock on the keyring, and replace the keys with a
-// new set of keys. The key indicated by primaryKey will be installed as the new
-// primary key.
+// 重新排序，让primaryKey排在第一位
 func (k *Keyring) installKeys(keys [][]byte, primaryKey []byte) {
+	// keys 所有秘钥，primaryKey也在其中
 	k.l.Lock()
 	defer k.l.Unlock()
-
+	// 重新排序，让primaryKey排在第一位
 	newKeys := [][]byte{primaryKey}
 	for _, key := range keys {
 		if !bytes.Equal(key, primaryKey) {
@@ -139,7 +117,7 @@ func (k *Keyring) installKeys(keys [][]byte, primaryKey []byte) {
 	k.keys = newKeys
 }
 
-// GetKeys returns the current set of keys on the ring.
+// GetKeys 返回私钥数据集
 func (k *Keyring) GetKeys() [][]byte {
 	k.l.Lock()
 	defer k.l.Unlock()
@@ -147,8 +125,7 @@ func (k *Keyring) GetKeys() [][]byte {
 	return k.keys
 }
 
-// GetPrimaryKey returns the key on the ring at position 0. This is the key used
-// for encrypting messages, and is the first key tried for decrypting messages.
+// GetPrimaryKey 返回用于加密数据的主私钥
 func (k *Keyring) GetPrimaryKey() (key []byte) {
 	k.l.Lock()
 	defer k.l.Unlock()
