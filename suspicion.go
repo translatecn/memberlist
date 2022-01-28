@@ -6,17 +6,12 @@ import (
 	"time"
 )
 
-// suspicion manages the suspect timer for a node and provides an interface
-// to accelerate the timeout as we get more independent confirmations that
-// a node is suspect.
+// suspicion 管理节点的可疑计时器，并提供一个接口，当我们获得更多关于节点可疑的独立确认时，可以加速超时。
 type suspicion struct {
-	// n is the number of independent confirmations we've seen. This must
-	// be updated using atomic instructions to prevent contention with the
-	// timer callback.
+	// N是我们看到的独立确认的数量。这必须使用原子指令更新，以防止与定时器回调争用。
 	n int32
 
-	// k is the number of independent confirmations we'd like to see in
-	// order to drive the timer to its minimum value.
+	//
 	k int32
 
 	// min is the minimum timer value.

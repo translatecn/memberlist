@@ -13,7 +13,7 @@ import (
 // length of label name:  uint8 (because labels can't be longer than 255 bytes)
 // label name:            []uint8
 
-// LabelMaxSize is the maximum length of a packet or stream label.
+// LabelMaxSize 包、流  标签的最大长度
 const LabelMaxSize = 255
 
 // AddLabelHeaderToPacket prefixes outgoing packets with the correct header if

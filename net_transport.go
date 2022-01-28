@@ -95,9 +95,10 @@ func NewNetTransport(config *NetTransportConfig) (*NetTransport, error) {
 		t.udpListeners = append(t.udpListeners, udpLn)
 	}
 
-	// Fire them up now that we've been able to create them all.
+	// 现在我们已经能够创建它们了。
 	for i := 0; i < len(config.BindAddrs); i++ {
 		t.wg.Add(2)
+		// 开始接收请求
 		go t.tcpListen(t.tcpListeners[i])
 		go t.udpListen(t.udpListeners[i])
 	}

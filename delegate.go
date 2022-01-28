@@ -1,7 +1,7 @@
 package memberlist
 
 // Delegate is the interface that clients must implement if they want to hook
-// into the gossip layer of Memberlist. All the methods must be thread-safe,
+// into the gossip layer of Members. All the methods must be thread-safe,
 // as they can and generally will be called concurrently.
 type Delegate interface {
 	// NodeMeta is used to retrieve meta-data about the current node

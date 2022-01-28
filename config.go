@@ -143,7 +143,7 @@ type Config struct {
 	CIDRsAllowed []net.IPNet
 }
 
-// ParseCIDRs 解析CIDR 列表,返回第一个解析错误   【192.0.2.1/24】
+// ParseCIDRs 解析CIDR 列表  【192.0.2.1/24】
 func ParseCIDRs(v []string) ([]net.IPNet, error) {
 	nets := make([]net.IPNet, 0)
 	if v == nil {

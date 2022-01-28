@@ -26,7 +26,7 @@ func TestMemberlist_Integ(t *testing.T) {
 	CheckInteg(t)
 
 	num := 16
-	var members []*Memberlist
+	var members []*Members
 
 	secret := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 	eventCh := make(chan NodeEvent, num)

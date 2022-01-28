@@ -98,6 +98,7 @@ type NodeAwareTransport interface {
 	DialAddressTimeout(addr Address, timeout time.Duration) (net.Conn, error)
 }
 
+// shim 垫片
 type shimNodeAwareTransport struct {
 	Transport
 }

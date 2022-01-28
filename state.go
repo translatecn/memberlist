@@ -101,7 +101,7 @@ func (f NoPingResponseError) Error() string {
 // Schedule is used to ensure the Tick is performed periodically. This
 // function is safe to call multiple times. If the memberlist is already
 // scheduled, then it won't do anything.
-func (m *Memberlist) schedule() {
+func (m *Members) schedule() {
 	m.tickerLock.Lock()
 	defer m.tickerLock.Unlock()
 
@@ -143,7 +143,7 @@ func (m *Memberlist) schedule() {
 
 // triggerFunc is used to trigger a function call each time a
 // message is received until a stop tick arrives.
-func (m *Memberlist) triggerFunc(stagger time.Duration, C <-chan time.Time, stop <-chan struct{}, f func()) {
+func (m *Members) triggerFunc(stagger time.Duration, C <-chan time.Time, stop <-chan struct{}, f func()) {
 	// Use a random stagger to avoid syncronizing
 	randStagger := time.Duration(uint64(rand.Int63()) % uint64(stagger))
 	select {
@@ -165,7 +165,7 @@ func (m *Memberlist) triggerFunc(stagger time.Duration, C <-chan time.Time, stop
 // a stop tick arrives. We don't use triggerFunc since the push/pull
 // timer is dynamically scaled based on cluster size to avoid network
 // saturation
-func (m *Memberlist) pushPullTrigger(stop <-chan struct{}) {
+func (m *Members) pushPullTrigger(stop <-chan struct{}) {
 	interval := m.config.PushPullInterval
 
 	// Use a random stagger to avoid syncronizing
@@ -190,7 +190,7 @@ func (m *Memberlist) pushPullTrigger(stop <-chan struct{}) {
 
 // Deschedule is used to stop the background maintenance. This is safe
 // to call multiple times.
-func (m *Memberlist) deschedule() {
+func (m *Members) deschedule() {
 	m.tickerLock.Lock()
 	defer m.tickerLock.Unlock()
 
@@ -211,7 +211,7 @@ func (m *Memberlist) deschedule() {
 }
 
 // Tick is used to perform a single round of failure detection and gossip
-func (m *Memberlist) probe() {
+func (m *Members) probe() {
 	// Track the number of indexes we've considered probing
 	numCheck := 0
 START:
@@ -256,7 +256,7 @@ START:
 }
 
 // probeNodeByAddr just safely calls probeNode given only the address of the node (for tests)
-func (m *Memberlist) probeNodeByAddr(addr string) {
+func (m *Members) probeNodeByAddr(addr string) {
 	m.nodeLock.RLock()
 	n := m.nodeMap[addr]
 	m.nodeLock.RUnlock()
@@ -285,7 +285,7 @@ func failedRemote(err error) bool {
 }
 
 // probeNode handles a single round of failure checking on a node.
-func (m *Memberlist) probeNode(node *nodeState) {
+func (m *Members) probeNode(node *nodeState) {
 	defer metrics.MeasureSince([]string{"memberlist", "probeNode"}, time.Now())
 
 	// We use our health awareness to scale the overall probe interval, so we
@@ -506,7 +506,7 @@ HANDLE_REMOTE_FAILURE:
 }
 
 // Ping initiates a ping to the node with the specified name.
-func (m *Memberlist) Ping(node string, addr net.Addr) (time.Duration, error) {
+func (m *Members) Ping(node string, addr net.Addr) (time.Duration, error) {
 	// Prepare a ping message and setup an ack handler.
 	selfAddr, selfPort := m.getAdvertise()
 	ping := ping{
@@ -547,7 +547,7 @@ func (m *Memberlist) Ping(node string, addr net.Addr) (time.Duration, error) {
 
 // resetNodes is used when the tick wraps around. It will reap the
 // dead nodes and shuffle the node list.
-func (m *Memberlist) resetNodes() {
+func (m *Members) resetNodes() {
 	m.nodeLock.Lock()
 	defer m.nodeLock.Unlock()
 
@@ -572,7 +572,7 @@ func (m *Memberlist) resetNodes() {
 
 // gossip is invoked every GossipInterval period to broadcast our gossip
 // messages to a few random nodes.
-func (m *Memberlist) gossip() {
+func (m *Members) gossip() {
 	defer metrics.MeasureSince([]string{"memberlist", "gossip"}, time.Now())
 
 	// Get some random live, suspect, or recently dead nodes
@@ -630,7 +630,7 @@ func (m *Memberlist) gossip() {
 // exchange. Used to ensure a high level of convergence, but is also
 // reasonably expensive as the entire state of this node is exchanged
 // with the other node.
-func (m *Memberlist) pushPull() {
+func (m *Members) pushPull() {
 	// Get a random live node
 	m.nodeLock.RLock()
 	nodes := kRandomNodes(1, m.nodes, func(n *nodeState) bool {
@@ -652,7 +652,7 @@ func (m *Memberlist) pushPull() {
 }
 
 // pushPullNode does a complete state exchange with a specific node.
-func (m *Memberlist) pushPullNode(a Address, join bool) error {
+func (m *Members) pushPullNode(a Address, join bool) error {
 	defer metrics.MeasureSince([]string{"memberlist", "pushPullNode"}, time.Now())
 
 	// Attempt to send and receive with the node
@@ -679,7 +679,7 @@ func (m *Memberlist) pushPullNode(a Address, join bool) error {
 // After this, it goes through the entire cluster (local and remote) and
 // verifies that everyone's speaking 协议版本s satisfy this range.
 // If this passes, it means that every node can understand each other.
-func (m *Memberlist) verifyProtocol(remote []pushNodeState) error {
+func (m *Members) verifyProtocol(remote []pushNodeState) error {
 	m.nodeLock.RLock()
 	defer m.nodeLock.RUnlock()
 
@@ -787,22 +787,22 @@ func (m *Memberlist) verifyProtocol(remote []pushNodeState) error {
 }
 
 // nextSeqNo returns a usable sequence number in a thread safe way
-func (m *Memberlist) nextSeqNo() uint32 {
+func (m *Members) nextSeqNo() uint32 {
 	return atomic.AddUint32(&m.sequenceNum, 1)
 }
 
 // nextIncarnation returns the next incarnation number in a thread safe way
-func (m *Memberlist) nextIncarnation() uint32 {
+func (m *Members) nextIncarnation() uint32 {
 	return atomic.AddUint32(&m.incarnation, 1)
 }
 
 // skipIncarnation adds the positive offset to the incarnation number.
-func (m *Memberlist) skipIncarnation(offset uint32) uint32 {
+func (m *Members) skipIncarnation(offset uint32) uint32 {
 	return atomic.AddUint32(&m.incarnation, offset)
 }
 
 // estNumNodes is used to get the current estimate of the number of nodes
-func (m *Memberlist) estNumNodes() int {
+func (m *Members) estNumNodes() int {
 	return int(atomic.LoadUint32(&m.numNodes))
 }
 
@@ -816,7 +816,7 @@ type ackMessage struct {
 // with a given sequence number is received. The `complete` field of the message
 // will be false on timeout. Any nack messages will cause an empty struct to be
 // passed to the nackCh, which can be nil if not needed.
-func (m *Memberlist) setProbeChannels(seqNo uint32, ackCh chan ackMessage, nackCh chan struct{}, timeout time.Duration) {
+func (m *Members) setProbeChannels(seqNo uint32, ackCh chan ackMessage, nackCh chan struct{}, timeout time.Duration) {
 	// Create handler functions for acks and nacks
 	ackFn := func(payload []byte, timestamp time.Time) {
 		select {
@@ -853,7 +853,7 @@ func (m *Memberlist) setProbeChannels(seqNo uint32, ackCh chan ackMessage, nackC
 // given sequence number is received. If a timeout is reached, the handler is
 // deleted. This is used for indirect pings so does not configure a function
 // for nacks.
-func (m *Memberlist) setAckHandler(seqNo uint32, ackFn func([]byte, time.Time), timeout time.Duration) {
+func (m *Members) setAckHandler(seqNo uint32, ackFn func([]byte, time.Time), timeout time.Duration) {
 	// Add the handler
 	ah := &ackHandler{ackFn, nil, nil}
 	m.ackLock.Lock()
@@ -869,7 +869,7 @@ func (m *Memberlist) setAckHandler(seqNo uint32, ackFn func([]byte, time.Time), 
 }
 
 // Invokes an ack handler if any is associated, and reaps the handler immediately
-func (m *Memberlist) invokeAckHandler(ack ackResp, timestamp time.Time) {
+func (m *Members) invokeAckHandler(ack ackResp, timestamp time.Time) {
 	m.ackLock.Lock()
 	ah, ok := m.ackHandlers[ack.SeqNo]
 	delete(m.ackHandlers, ack.SeqNo)
@@ -882,7 +882,7 @@ func (m *Memberlist) invokeAckHandler(ack ackResp, timestamp time.Time) {
 }
 
 // Invokes nack handler if any is associated.
-func (m *Memberlist) invokeNackHandler(nack nackResp) {
+func (m *Members) invokeNackHandler(nack nackResp) {
 	m.ackLock.Lock()
 	ah, ok := m.ackHandlers[nack.SeqNo]
 	m.ackLock.Unlock()
@@ -897,7 +897,7 @@ func (m *Memberlist) invokeNackHandler(nack nackResp) {
 // accusedInc value, or you can supply 0 to just get the next incarnation number.
 // This alters the node state that's passed in so this MUST be called while the
 // nodeLock is held.
-func (m *Memberlist) refute(me *nodeState, accusedInc uint32) {
+func (m *Members) refute(me *nodeState, accusedInc uint32) {
 	// Make sure the incarnation number beats the accusation.
 	inc := m.nextIncarnation()
 	if accusedInc >= inc {
@@ -925,7 +925,7 @@ func (m *Memberlist) refute(me *nodeState, accusedInc uint32) {
 
 // aliveNode is invoked by the network layer when we get a message about a
 // live node.
-func (m *Memberlist) aliveNode(a *alive, notify chan struct{}, bootstrap bool) {
+func (m *Members) aliveNode(a *alive, notify chan struct{}, bootstrap bool) {
 	m.nodeLock.Lock()
 	defer m.nodeLock.Unlock()
 	state, ok := m.nodeMap[a.Node]
@@ -1142,7 +1142,7 @@ func (m *Memberlist) aliveNode(a *alive, notify chan struct{}, bootstrap bool) {
 
 // suspectNode is invoked by the network layer when we get a message
 // about a suspect node
-func (m *Memberlist) suspectNode(s *suspect) {
+func (m *Members) suspectNode(s *suspect) {
 	m.nodeLock.Lock()
 	defer m.nodeLock.Unlock()
 	state, ok := m.nodeMap[s.Node]
@@ -1235,7 +1235,7 @@ func (m *Memberlist) suspectNode(s *suspect) {
 
 // deadNode is invoked by the network layer when we get a message
 // about a dead node
-func (m *Memberlist) deadNode(d *dead) {
+func (m *Members) deadNode(d *dead) {
 	m.nodeLock.Lock()
 	defer m.nodeLock.Unlock()
 	state, ok := m.nodeMap[d.Node]
@@ -1296,7 +1296,7 @@ func (m *Memberlist) deadNode(d *dead) {
 
 // mergeState is invoked by the network layer when we get a Push/Pull
 // state transfer
-func (m *Memberlist) mergeState(remote []pushNodeState) {
+func (m *Members) mergeState(remote []pushNodeState) {
 	for _, r := range remote {
 		switch r.State {
 		case StateAlive:

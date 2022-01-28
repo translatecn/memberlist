@@ -206,7 +206,7 @@ type msgHandoff struct {
 }
 
 // encryptionVersion returns the encryption version to use
-func (m *Memberlist) encryptionVersion() encryptionVersion {
+func (m *Members) encryptionVersion() encryptionVersion {
 	switch m.ProtocolVersion() {
 	case 1:
 		return 0
@@ -217,7 +217,7 @@ func (m *Memberlist) encryptionVersion() encryptionVersion {
 
 // streamListen is a long running goroutine that pulls incoming streams from the
 // transport and hands them off for processing.
-func (m *Memberlist) streamListen() {
+func (m *Members) streamListen() {
 	for {
 		select {
 		case conn := <-m.transport.StreamCh():
@@ -230,7 +230,7 @@ func (m *Memberlist) streamListen() {
 }
 
 // handleConn handles a single incoming stream connection from the transport.
-func (m *Memberlist) handleConn(conn net.Conn) {
+func (m *Members) handleConn(conn net.Conn) {
 	defer conn.Close()
 	m.logger.Printf("[DEBUG] memberlist: Stream connection %s", LogConn(conn))
 
@@ -345,7 +345,7 @@ func (m *Memberlist) handleConn(conn net.Conn) {
 
 // packetListen is a long running goroutine that pulls packets out of the
 // transport and hands them off for processing.
-func (m *Memberlist) packetListen() {
+func (m *Members) packetListen() {
 	for {
 		select {
 		case packet := <-m.transport.PacketCh():
@@ -357,7 +357,7 @@ func (m *Memberlist) packetListen() {
 	}
 }
 
-func (m *Memberlist) ingestPacket(buf []byte, from net.Addr, timestamp time.Time) {
+func (m *Members) ingestPacket(buf []byte, from net.Addr, timestamp time.Time) {
 	var (
 		packetLabel string
 		err         error
@@ -415,7 +415,7 @@ func (m *Memberlist) ingestPacket(buf []byte, from net.Addr, timestamp time.Time
 	}
 }
 
-func (m *Memberlist) handleCommand(buf []byte, from net.Addr, timestamp time.Time) {
+func (m *Members) handleCommand(buf []byte, from net.Addr, timestamp time.Time) {
 	if len(buf) < 1 {
 		m.logger.Printf("[ERR] memberlist: missing message type byte %s", LogAddress(from))
 		return
@@ -474,7 +474,7 @@ func (m *Memberlist) handleCommand(buf []byte, from net.Addr, timestamp time.Tim
 }
 
 // getNextMessage returns the next message to process in priority order, using LIFO
-func (m *Memberlist) getNextMessage() (msgHandoff, bool) {
+func (m *Members) getNextMessage() (msgHandoff, bool) {
 	m.msgQueueLock.Lock()
 	defer m.msgQueueLock.Unlock()
 
@@ -493,7 +493,7 @@ func (m *Memberlist) getNextMessage() (msgHandoff, bool) {
 // packetHandler is a long running goroutine that processes messages received
 // over the packet interface, but is decoupled from the listener to avoid
 // blocking the listener which may cause ping/ack messages to be delayed.
-func (m *Memberlist) packetHandler() {
+func (m *Members) packetHandler() {
 	for {
 		select {
 		case <-m.handoffCh:
@@ -526,7 +526,7 @@ func (m *Memberlist) packetHandler() {
 	}
 }
 
-func (m *Memberlist) handleCompound(buf []byte, from net.Addr, timestamp time.Time) {
+func (m *Members) handleCompound(buf []byte, from net.Addr, timestamp time.Time) {
 	// Decode the parts
 	trunc, parts, err := decodeCompoundMessage(buf)
 	if err != nil {
@@ -545,7 +545,7 @@ func (m *Memberlist) handleCompound(buf []byte, from net.Addr, timestamp time.Ti
 	}
 }
 
-func (m *Memberlist) handlePing(buf []byte, from net.Addr) {
+func (m *Members) handlePing(buf []byte, from net.Addr) {
 	var p ping
 	if err := decode(buf, &p); err != nil {
 		m.logger.Printf("[ERR] memberlist: Failed to decode ping request: %s %s", err, LogAddress(from))
@@ -578,7 +578,7 @@ func (m *Memberlist) handlePing(buf []byte, from net.Addr) {
 	}
 }
 
-func (m *Memberlist) handleIndirectPing(buf []byte, from net.Addr) {
+func (m *Members) handleIndirectPing(buf []byte, from net.Addr) {
 	var ind indirectPingReq
 	if err := decode(buf, &ind); err != nil {
 		m.logger.Printf("[ERR] memberlist: Failed to decode indirect ping request: %s %s", err, LogAddress(from))
@@ -660,7 +660,7 @@ func (m *Memberlist) handleIndirectPing(buf []byte, from net.Addr) {
 	}
 }
 
-func (m *Memberlist) handleAck(buf []byte, from net.Addr, timestamp time.Time) {
+func (m *Members) handleAck(buf []byte, from net.Addr, timestamp time.Time) {
 	var ack ackResp
 	if err := decode(buf, &ack); err != nil {
 		m.logger.Printf("[ERR] memberlist: Failed to decode ack response: %s %s", err, LogAddress(from))
@@ -669,7 +669,7 @@ func (m *Memberlist) handleAck(buf []byte, from net.Addr, timestamp time.Time) {
 	m.invokeAckHandler(ack, timestamp)
 }
 
-func (m *Memberlist) handleNack(buf []byte, from net.Addr) {
+func (m *Members) handleNack(buf []byte, from net.Addr) {
 	var nack nackResp
 	if err := decode(buf, &nack); err != nil {
 		m.logger.Printf("[ERR] memberlist: Failed to decode nack response: %s %s", err, LogAddress(from))
@@ -678,7 +678,7 @@ func (m *Memberlist) handleNack(buf []byte, from net.Addr) {
 	m.invokeNackHandler(nack)
 }
 
-func (m *Memberlist) handleSuspect(buf []byte, from net.Addr) {
+func (m *Members) handleSuspect(buf []byte, from net.Addr) {
 	var sus suspect
 	if err := decode(buf, &sus); err != nil {
 		m.logger.Printf("[ERR] memberlist: Failed to decode suspect message: %s %s", err, LogAddress(from))
@@ -689,7 +689,7 @@ func (m *Memberlist) handleSuspect(buf []byte, from net.Addr) {
 
 // ensureCanConnect return the IP from a RemoteAddress
 // return error if this client must not connect
-func (m *Memberlist) ensureCanConnect(from net.Addr) error {
+func (m *Members) ensureCanConnect(from net.Addr) error {
 	if !m.config.IPMustBeChecked() {
 		return nil
 	}
@@ -709,7 +709,7 @@ func (m *Memberlist) ensureCanConnect(from net.Addr) error {
 	return m.config.IPAllowed(ip)
 }
 
-func (m *Memberlist) handleAlive(buf []byte, from net.Addr) {
+func (m *Members) handleAlive(buf []byte, from net.Addr) {
 	if err := m.ensureCanConnect(from); err != nil {
 		m.logger.Printf("[DEBUG] memberlist: Blocked alive message: %s %s", err, LogAddress(from))
 		return
@@ -738,7 +738,7 @@ func (m *Memberlist) handleAlive(buf []byte, from net.Addr) {
 	m.aliveNode(&live, nil, false)
 }
 
-func (m *Memberlist) handleDead(buf []byte, from net.Addr) {
+func (m *Members) handleDead(buf []byte, from net.Addr) {
 	var d dead
 	if err := decode(buf, &d); err != nil {
 		m.logger.Printf("[ERR] memberlist: Failed to decode dead message: %s %s", err, LogAddress(from))
@@ -748,7 +748,7 @@ func (m *Memberlist) handleDead(buf []byte, from net.Addr) {
 }
 
 // handleUser is used to notify channels of incoming user data
-func (m *Memberlist) handleUser(buf []byte, from net.Addr) {
+func (m *Members) handleUser(buf []byte, from net.Addr) {
 	d := m.config.Delegate
 	if d != nil {
 		d.NotifyMsg(buf)
@@ -756,7 +756,7 @@ func (m *Memberlist) handleUser(buf []byte, from net.Addr) {
 }
 
 // handleCompressed is used to unpack a compressed message
-func (m *Memberlist) handleCompressed(buf []byte, from net.Addr, timestamp time.Time) {
+func (m *Members) handleCompressed(buf []byte, from net.Addr, timestamp time.Time) {
 	// Try to decode the payload
 	payload, err := decompressPayload(buf)
 	if err != nil {
@@ -769,7 +769,7 @@ func (m *Memberlist) handleCompressed(buf []byte, from net.Addr, timestamp time.
 }
 
 // encodeAndSendMsg is used to combine the encoding and sending steps
-func (m *Memberlist) encodeAndSendMsg(a Address, msgType messageType, msg interface{}) error {
+func (m *Members) encodeAndSendMsg(a Address, msgType messageType, msg interface{}) error {
 	out, err := encode(msgType, msg)
 	if err != nil {
 		return err
@@ -782,7 +782,7 @@ func (m *Memberlist) encodeAndSendMsg(a Address, msgType messageType, msg interf
 
 // sendMsg is used to send a message via packet to another host. It will
 // opportunistically create a compoundMsg and piggy back other broadcasts.
-func (m *Memberlist) sendMsg(a Address, msg []byte) error {
+func (m *Members) sendMsg(a Address, msg []byte) error {
 	// Check if we can piggy back any messages
 	bytesAvail := m.config.UDPBufferSize - len(msg) - compoundHeaderOverhead - labelOverhead(m.config.Label)
 	if m.config.EncryptionEnabled() && m.config.GossipVerifyOutgoing {
@@ -809,7 +809,7 @@ func (m *Memberlist) sendMsg(a Address, msg []byte) error {
 
 // rawSendMsgPacket is used to send message via packet to another host without
 // modification, other than compression or encryption if enabled.
-func (m *Memberlist) rawSendMsgPacket(a Address, node *Node, msg []byte) error {
+func (m *Members) rawSendMsgPacket(a Address, node *Node, msg []byte) error {
 	if a.Name == "" && m.config.RequireNodeNames {
 		return errNodeNamesAreRequired
 	}
@@ -876,7 +876,7 @@ func (m *Memberlist) rawSendMsgPacket(a Address, node *Node, msg []byte) error {
 
 // rawSendMsgStream is used to stream a message to another host without
 // modification, other than applying compression and encryption if enabled.
-func (m *Memberlist) rawSendMsgStream(conn net.Conn, sendBuf []byte, streamLabel string) error {
+func (m *Members) rawSendMsgStream(conn net.Conn, sendBuf []byte, streamLabel string) error {
 	// Check if compression is enabled
 	if m.config.EnableCompression {
 		compBuf, err := compressPayload(sendBuf)
@@ -910,7 +910,7 @@ func (m *Memberlist) rawSendMsgStream(conn net.Conn, sendBuf []byte, streamLabel
 }
 
 // sendUserMsg is used to stream a user message to another host.
-func (m *Memberlist) sendUserMsg(a Address, sendBuf []byte) error {
+func (m *Members) sendUserMsg(a Address, sendBuf []byte) error {
 	if a.Name == "" && m.config.RequireNodeNames {
 		return errNodeNamesAreRequired
 	}
@@ -941,7 +941,7 @@ func (m *Memberlist) sendUserMsg(a Address, sendBuf []byte) error {
 
 // sendAndReceiveState is used to initiate a push/pull over a stream with a
 // remote host.
-func (m *Memberlist) sendAndReceiveState(a Address, join bool) ([]pushNodeState, []byte, error) {
+func (m *Members) sendAndReceiveState(a Address, join bool) ([]pushNodeState, []byte, error) {
 	if a.Name == "" && m.config.RequireNodeNames {
 		return nil, nil, errNodeNamesAreRequired
 	}
@@ -986,7 +986,7 @@ func (m *Memberlist) sendAndReceiveState(a Address, join bool) ([]pushNodeState,
 }
 
 // sendLocalState is invoked to send our local state over a stream connection.
-func (m *Memberlist) sendLocalState(conn net.Conn, join bool, streamLabel string) error {
+func (m *Members) sendLocalState(conn net.Conn, join bool, streamLabel string) error {
 	// Setup a deadline
 	conn.SetDeadline(time.Now().Add(m.config.TCPTimeout))
 
@@ -1047,7 +1047,7 @@ func (m *Memberlist) sendLocalState(conn net.Conn, join bool, streamLabel string
 }
 
 // encryptLocalState is used to help encrypt local state before sending
-func (m *Memberlist) encryptLocalState(sendBuf []byte, streamLabel string) ([]byte, error) {
+func (m *Members) encryptLocalState(sendBuf []byte, streamLabel string) ([]byte, error) {
 	var buf bytes.Buffer
 
 	// Write the encryptMsg byte
@@ -1076,7 +1076,7 @@ func (m *Memberlist) encryptLocalState(sendBuf []byte, streamLabel string) ([]by
 }
 
 // decryptRemoteState is used to help decrypt the remote state
-func (m *Memberlist) decryptRemoteState(bufConn io.Reader, streamLabel string) ([]byte, error) {
+func (m *Members) decryptRemoteState(bufConn io.Reader, streamLabel string) ([]byte, error) {
 	// Read in enough to determine message length
 	cipherText := bytes.NewBuffer(nil)
 	cipherText.WriteByte(byte(encryptMsg))
@@ -1123,7 +1123,7 @@ func (m *Memberlist) decryptRemoteState(bufConn io.Reader, streamLabel string) (
 //
 // The provided streamLabel if present will be authenticated during decryption
 // of each message.
-func (m *Memberlist) readStream(conn net.Conn, streamLabel string) (messageType, io.Reader, *codec.Decoder, error) {
+func (m *Members) readStream(conn net.Conn, streamLabel string) (messageType, io.Reader, *codec.Decoder, error) {
 	// Created a buffered reader
 	var bufConn io.Reader = bufio.NewReader(conn)
 
@@ -1183,7 +1183,7 @@ func (m *Memberlist) readStream(conn net.Conn, streamLabel string) (messageType,
 }
 
 // readRemoteState is used to read the remote state from a connection
-func (m *Memberlist) readRemoteState(bufConn io.Reader, dec *codec.Decoder) (bool, []pushNodeState, []byte, error) {
+func (m *Members) readRemoteState(bufConn io.Reader, dec *codec.Decoder) (bool, []pushNodeState, []byte, error) {
 	// Read the push/pull header
 	var header pushPullHeader
 	if err := dec.Decode(&header); err != nil {
@@ -1227,7 +1227,7 @@ func (m *Memberlist) readRemoteState(bufConn io.Reader, dec *codec.Decoder) (boo
 }
 
 // mergeRemoteState is used to merge the remote state with our local state
-func (m *Memberlist) mergeRemoteState(join bool, remoteNodes []pushNodeState, userBuf []byte) error {
+func (m *Members) mergeRemoteState(join bool, remoteNodes []pushNodeState, userBuf []byte) error {
 	if err := m.verifyProtocol(remoteNodes); err != nil {
 		return err
 	}
@@ -1266,7 +1266,7 @@ func (m *Memberlist) mergeRemoteState(join bool, remoteNodes []pushNodeState, us
 }
 
 // readUserMsg is used to decode a userMsg from a stream.
-func (m *Memberlist) readUserMsg(bufConn io.Reader, dec *codec.Decoder) error {
+func (m *Members) readUserMsg(bufConn io.Reader, dec *codec.Decoder) error {
 	// Read the user message header
 	var header userMsgHeader
 	if err := dec.Decode(&header); err != nil {
@@ -1300,7 +1300,7 @@ func (m *Memberlist) readUserMsg(bufConn io.Reader, dec *codec.Decoder) error {
 // a ping, and waits for an ack. All of this is done as a series of blocking
 // operations, given the deadline. The bool return parameter is true if we
 // we able to round trip a ping to the other node.
-func (m *Memberlist) sendPingAndWaitForAck(a Address, ping ping, deadline time.Time) (bool, error) {
+func (m *Members) sendPingAndWaitForAck(a Address, ping ping, deadline time.Time) (bool, error) {
 	if a.Name == "" && m.config.RequireNodeNames {
 		return false, errNodeNamesAreRequired
 	}

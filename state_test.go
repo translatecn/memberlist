@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func HostMemberlist(host string, t *testing.T, f func(*Config)) *Memberlist {
+func HostMemberlist(host string, t *testing.T, f func(*Config)) *Members {
 	t.Helper()
 
 	c := DefaultLANConfig()
@@ -172,7 +172,7 @@ func TestMemberList_ProbeNode_Suspect_Dogpile(t *testing.T) {
 			m.aliveNode(&a, nil, true)
 
 			// Make all but one peer be an real, alive instance.
-			var peers []*Memberlist
+			var peers []*Members
 			for j := 0; j < c.numPeers-1; j++ {
 				peerAddr := getBindAddr()
 
@@ -1052,7 +1052,7 @@ func TestMemberList_ResetNodes(t *testing.T) {
 }
 
 func TestMemberList_NextSeq(t *testing.T) {
-	m := &Memberlist{}
+	m := &Members{}
 	if m.nextSeqNo() != 1 {
 		t.Fatalf("bad sequence no")
 	}
@@ -1061,7 +1061,7 @@ func TestMemberList_NextSeq(t *testing.T) {
 	}
 }
 
-func ackHandlerExists(t *testing.T, m *Memberlist, idx uint32) bool {
+func ackHandlerExists(t *testing.T, m *Members, idx uint32) bool {
 	t.Helper()
 
 	m.ackLock.Lock()
@@ -1072,7 +1072,7 @@ func ackHandlerExists(t *testing.T, m *Memberlist, idx uint32) bool {
 }
 
 func TestMemberList_setProbeChannels(t *testing.T) {
-	m := &Memberlist{ackHandlers: make(map[uint32]*ackHandler)}
+	m := &Members{ackHandlers: make(map[uint32]*ackHandler)}
 
 	ch := make(chan ackMessage, 1)
 	m.setProbeChannels(0, ch, nil, 10*time.Millisecond)
@@ -1085,7 +1085,7 @@ func TestMemberList_setProbeChannels(t *testing.T) {
 }
 
 func TestMemberList_setAckHandler(t *testing.T) {
-	m := &Memberlist{ackHandlers: make(map[uint32]*ackHandler)}
+	m := &Members{ackHandlers: make(map[uint32]*ackHandler)}
 
 	f := func([]byte, time.Time) {}
 	m.setAckHandler(0, f, 10*time.Millisecond)
@@ -1098,7 +1098,7 @@ func TestMemberList_setAckHandler(t *testing.T) {
 }
 
 func TestMemberList_invokeAckHandler(t *testing.T) {
-	m := &Memberlist{ackHandlers: make(map[uint32]*ackHandler)}
+	m := &Members{ackHandlers: make(map[uint32]*ackHandler)}
 
 	// Does nothing
 	m.invokeAckHandler(ackResp{}, time.Now())
@@ -1117,7 +1117,7 @@ func TestMemberList_invokeAckHandler(t *testing.T) {
 }
 
 func TestMemberList_invokeAckHandler_Channel_Ack(t *testing.T) {
-	m := &Memberlist{ackHandlers: make(map[uint32]*ackHandler)}
+	m := &Members{ackHandlers: make(map[uint32]*ackHandler)}
 
 	ack := ackResp{0, []byte{0, 0, 0}}
 
@@ -1151,7 +1151,7 @@ func TestMemberList_invokeAckHandler_Channel_Ack(t *testing.T) {
 }
 
 func TestMemberList_invokeAckHandler_Channel_Nack(t *testing.T) {
-	m := &Memberlist{ackHandlers: make(map[uint32]*ackHandler)}
+	m := &Members{ackHandlers: make(map[uint32]*ackHandler)}
 
 	nack := nackResp{0}
 

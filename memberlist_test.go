@@ -148,7 +148,7 @@ func (m *MockDelegate) MergeRemoteState(s []byte, join bool) {
 	m.remoteState = s
 }
 
-func GetMemberlist(tb testing.TB, f func(c *Config)) *Memberlist {
+func GetMemberlist(tb testing.TB, f func(c *Config)) *Members {
 	c := testConfig(tb)
 	c.BindPort = 0 // assign a free port
 	if f != nil {
@@ -296,7 +296,7 @@ func TestCreate_invalidLoggerSettings(t *testing.T) {
 	m, err := Create(c)
 	if err == nil {
 		require.NoError(t, m.Shutdown())
-		t.Fatal("Memberlist should not allow both LogOutput and Logger to be set, but it did not raise an error")
+		t.Fatal("Members should not allow both LogOutput and Logger to be set, but it did not raise an error")
 	}
 }
 
@@ -598,7 +598,7 @@ func TestMemberList_Members(t *testing.T) {
 	n2 := &Node{Name: "test2"}
 	n3 := &Node{Name: "test3"}
 
-	m := &Memberlist{}
+	m := &Members{}
 	nodes := []*nodeState{
 		&nodeState{Node: *n1, State: StateAlive},
 		&nodeState{Node: *n2, State: StateDead},
@@ -671,7 +671,7 @@ func testMemberlist_Join_with_Labels(t *testing.T, secretKey []byte) {
 	require.NoError(t, err)
 	defer m2.Shutdown()
 
-	checkHost := func(t *testing.T, m *Memberlist, expected int) {
+	checkHost := func(t *testing.T, m *Members, expected int) {
 		assert.Equal(t, expected, len(m.Members()))
 		assert.Equal(t, expected, m.estNumNodes())
 	}
@@ -1006,7 +1006,7 @@ func TestMemberlist_Join_protocolVersions(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func joinAndTestMemberShip(t *testing.T, self *Memberlist, membersToJoin []string, expectedMembers int) error {
+func joinAndTestMemberShip(t *testing.T, self *Members, membersToJoin []string, expectedMembers int) error {
 	t.Helper()
 	num, err := self.Join(membersToJoin)
 	if err != nil {
@@ -1798,7 +1798,7 @@ func TestMemberlist_PingDelegate(t *testing.T) {
 	}
 }
 
-func waitUntilSize(t *testing.T, m *Memberlist, expected int) {
+func waitUntilSize(t *testing.T, m *Members, expected int) {
 	t.Helper()
 	retry(t, 15, 500*time.Millisecond, func(failf func(string, ...interface{})) {
 		t.Helper()
@@ -1831,7 +1831,7 @@ func isPortFree(t *testing.T, addr string, port int) error {
 	return udpLn.Close()
 }
 
-func waitUntilPortIsFree(t *testing.T, m *Memberlist) {
+func waitUntilPortIsFree(t *testing.T, m *Members) {
 	t.Helper()
 
 	// wait until we know for certain that m1 is dead dead
@@ -1880,7 +1880,7 @@ func TestMemberlist_EncryptedGossipTransition(t *testing.T) {
 	}
 
 	var bindPort int
-	createOK := func(conf *Config) *Memberlist {
+	createOK := func(conf *Config) *Members {
 		t.Helper()
 
 		if bindPort > 0 {
@@ -1897,7 +1897,7 @@ func TestMemberlist_EncryptedGossipTransition(t *testing.T) {
 		return m
 	}
 
-	joinOK := func(src, dst *Memberlist, numNodes int) {
+	joinOK := func(src, dst *Members, numNodes int) {
 		t.Helper()
 
 		srcName, dstName := pretty[src.config.Name], pretty[dst.config.Name]
@@ -1917,7 +1917,7 @@ func TestMemberlist_EncryptedGossipTransition(t *testing.T) {
 		require.Equal(t, numNodes, dst.estNumNodes(), "nodes: %v", dst.Members())
 	}
 
-	leaveOK := func(m *Memberlist, why string) {
+	leaveOK := func(m *Members, why string) {
 		t.Helper()
 
 		name := pretty[m.config.Name]
@@ -1926,7 +1926,7 @@ func TestMemberlist_EncryptedGossipTransition(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	shutdownOK := func(m *Memberlist, why string) {
+	shutdownOK := func(m *Members, why string) {
 		t.Helper()
 
 		name := pretty[m.config.Name]
@@ -1938,7 +1938,7 @@ func TestMemberlist_EncryptedGossipTransition(t *testing.T) {
 		waitUntilPortIsFree(t, m)
 	}
 
-	leaveAndShutdown := func(leaver, bystander *Memberlist, why string) {
+	leaveAndShutdown := func(leaver, bystander *Members, why string) {
 		t.Helper()
 
 		leaveOK(leaver, why)

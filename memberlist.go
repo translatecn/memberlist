@@ -1,17 +1,4 @@
-/*
-memberlist is a library that manages cluster
-membership and member failure detection using a gossip based protocol.
-
-The use cases for such a library are far-reaching: all distributed systems
-require membership, and memberlist is a re-usable solution to managing
-cluster membership and node failure detection.
-
-memberlist is eventually consistent but converges quickly on average.
-The speed at which it converges can be heavily tuned via various knobs
-on the protocol. Node failures are detected and network partitions are partially
-tolerated by attempting to communicate to potentially dead nodes through
-multiple routes.
-*/
+// Package memberlist /*
 package memberlist
 
 import (
@@ -32,30 +19,42 @@ import (
 	"github.com/miekg/dns"
 )
 
-var errNodeNamesAreRequired = errors.New("memberlist: node names are required by configuration but one was not provided")
+//memberlist是一个管理集群的库
+//使用基于gossip协议的成员和成员故障检测。
+//
+//这种库的用例影响深远:所有的分布式系统
+//要求成员资格，而成员名单是一个可重用的解决方案来管理
+//集群成员和节点故障检测。
+//
+//成员列表最终是一致的，但平均上很快收敛。
+//它的收敛速度可以通过各种各样的旋钮来调整
+//在协议。检测到节点故障，部分网络分区
+//可以通过尝试与潜在的死节点进行通信
+//多个路线。
 
-type Memberlist struct {
-	sequenceNum uint32 // Local sequence number
+var errNodeNamesAreRequired = errors.New("memberlist: 配置需要节点名，但没有提供节点名")
+
+type Members struct {
+	sequenceNum uint32 // 本地序列号
 	incarnation uint32 // Local incarnation number
-	numNodes    uint32 // Number of known nodes (estimate)
-	pushPullReq uint32 // Number of push/pull requests
+	numNodes    uint32 // 已知节点数(估计)
+	pushPullReq uint32 // push/pull 请求数
 
 	advertiseLock sync.RWMutex
 	advertiseAddr net.IP
 	advertisePort uint16
 
 	config         *Config
-	shutdown       int32 // Used as an atomic boolean value
+	shutdown       int32
 	shutdownCh     chan struct{}
-	leave          int32 // Used as an atomic boolean value
-	leaveBroadcast chan struct{}
+	leave          int32
+	leaveBroadcast chan struct{} // 离开广播
 
-	shutdownLock sync.Mutex // Serializes calls to Shutdown
-	leaveLock    sync.Mutex // Serializes calls to Leave
+	shutdownLock sync.Mutex
+	leaveLock    sync.Mutex
 
-	transport NodeAwareTransport
-
-	handoffCh            chan struct{}
+	transport            NodeAwareTransport
+	handoffCh            chan struct{} //TODO 消息队列
 	highPriorityMsgQueue *list.List
 	lowPriorityMsgQueue  *list.List
 	msgQueueLock         sync.Mutex
@@ -89,7 +88,7 @@ func (c *Config) BuildVsnArray() []uint8 {
 }
 
 // newMemberlist 创建网络监听器,只能在主线程被调度
-func newMemberlist(conf *Config) (*Memberlist, error) {
+func newMemberlist(conf *Config) (*Members, error) {
 	if conf.ProtocolVersion < ProtocolVersionMin {
 		return nil, fmt.Errorf("协议版本 '%d' 太小. 必须在这个范围: [%d, %d]", conf.ProtocolVersion, ProtocolVersionMin, ProtocolVersionMax)
 	} else if conf.ProtocolVersion > ProtocolVersionMax {
@@ -162,9 +161,10 @@ func newMemberlist(conf *Config) (*Memberlist, error) {
 
 		nt, err := makeNetRetry(limit)
 		if err != nil {
-			return nil, fmt.Errorf("Could not set up network transport: %v", err)
+			return nil, fmt.Errorf("无法设置网络传输: %v", err)
 		}
 		if conf.BindPort == 0 {
+			// 如果是0,那么NewNetTransport里的端口就是上边随机生成的  GetAutoBindPort多次调用获取的端口是一样的
 			port := nt.GetAutoBindPort()
 			conf.BindPort = port
 			conf.AdvertisePort = port
@@ -175,12 +175,12 @@ func newMemberlist(conf *Config) (*Memberlist, error) {
 
 	nodeAwareTransport, ok := transport.(NodeAwareTransport)
 	if !ok {
-		logger.Printf("[DEBUG] memberlist: configured Transport is not a NodeAwareTransport and some features may not work as desired")
+		logger.Printf("[DEBUG] memberlist: 配置的transport不是一个NodeAwareTransport，一些功能可能无法正常工作。")
 		nodeAwareTransport = &shimNodeAwareTransport{transport}
 	}
 
 	if len(conf.Label) > LabelMaxSize {
-		return nil, fmt.Errorf("could not use %q as a label: too long", conf.Label)
+		return nil, fmt.Errorf("不能使用 %q 作为标签: 太长了", conf.Label)
 	}
 
 	if conf.Label != "" {
@@ -190,14 +190,14 @@ func newMemberlist(conf *Config) (*Memberlist, error) {
 		}
 	}
 
-	m := &Memberlist{
+	m := &Members{
 		config:               conf,
 		shutdownCh:           make(chan struct{}),
-		leaveBroadcast:       make(chan struct{}, 1),
+		leaveBroadcast:       make(chan struct{}, 1), //
 		transport:            nodeAwareTransport,
 		handoffCh:            make(chan struct{}, 1),
-		highPriorityMsgQueue: list.New(),
-		lowPriorityMsgQueue:  list.New(),
+		highPriorityMsgQueue: list.New(), // 高优先级消息队列
+		lowPriorityMsgQueue:  list.New(), // 低优先级消息队列
 		nodeMap:              make(map[string]*nodeState),
 		nodeTimers:           make(map[string]*suspicion),
 		awareness:            newAwareness(conf.AwarenessMaxMultiplier),
@@ -223,7 +223,7 @@ func newMemberlist(conf *Config) (*Memberlist, error) {
 }
 
 // Create 不会链接其他节点、但会开启listeners,允许其他节点加入；之后Config不应该被改变
-func Create(conf *Config) (*Memberlist, error) {
+func Create(conf *Config) (*Members, error) {
 	m, err := newMemberlist(conf)
 	if err != nil {
 		return nil, err
@@ -236,16 +236,16 @@ func Create(conf *Config) (*Memberlist, error) {
 	return m, nil
 }
 
-// Join is used to take an existing Memberlist and attempt to join a cluster
+// Join is used to take an existing Members and attempt to join a cluster
 // by contacting all the given hosts and performing a state sync. Initially,
-// the Memberlist only contains our own state, so doing this will cause
+// the Members only contains our own state, so doing this will cause
 // remote nodes to become aware of the existence of this node, effectively
 // joining the cluster.
 //
 // This returns the number of hosts successfully contacted and an error if
 // none could be reached. If an error is returned, the node did not successfully
 // join the cluster.
-func (m *Memberlist) Join(existing []string) (int, error) {
+func (m *Members) Join(existing []string) (int, error) {
 	numSuccess := 0
 	var errs error
 	for _, exist := range existing {
@@ -289,7 +289,7 @@ type ipPort struct {
 // Consul's. By doing the TCP lookup directly, we get the best chance for the
 // largest list of hosts to join. Since joins are relatively rare events, it's ok
 // to do this rather expensive operation.
-func (m *Memberlist) tcpLookupIP(host string, defaultPort uint16, nodeName string) ([]ipPort, error) {
+func (m *Members) tcpLookupIP(host string, defaultPort uint16, nodeName string) ([]ipPort, error) {
 	// Don't attempt any TCP lookups against non-fully qualified domain
 	// names, since those will likely come from the resolv.conf file.
 	if !strings.Contains(host, ".") {
@@ -346,7 +346,7 @@ func (m *Memberlist) tcpLookupIP(host string, defaultPort uint16, nodeName strin
 
 // resolveAddr is used to resolve the address into an address,
 // port, and error. If no port is given, use the default
-func (m *Memberlist) resolveAddr(hostStr string) ([]ipPort, error) {
+func (m *Members) resolveAddr(hostStr string) ([]ipPort, error) {
 	// First peel off any leading node name. This is optional.
 	nodeName := ""
 	if slashIdx := strings.Index(hostStr, "/"); slashIdx >= 0 {
@@ -406,7 +406,7 @@ func (m *Memberlist) resolveAddr(hostStr string) ([]ipPort, error) {
 // setAlive is used to mark this node as being alive. This is the same
 // as if we received an alive notification our own network channel for
 // ourself.
-func (m *Memberlist) setAlive() error {
+func (m *Members) setAlive() error {
 	// Get the final advertise address from the transport, which may need
 	// to see which address we bound to.
 	addr, port, err := m.refreshAdvertise()
@@ -451,20 +451,20 @@ func (m *Memberlist) setAlive() error {
 	return nil
 }
 
-func (m *Memberlist) getAdvertise() (net.IP, uint16) {
+func (m *Members) getAdvertise() (net.IP, uint16) {
 	m.advertiseLock.RLock()
 	defer m.advertiseLock.RUnlock()
 	return m.advertiseAddr, m.advertisePort
 }
 
-func (m *Memberlist) setAdvertise(addr net.IP, port int) {
+func (m *Members) setAdvertise(addr net.IP, port int) {
 	m.advertiseLock.Lock()
 	defer m.advertiseLock.Unlock()
 	m.advertiseAddr = addr
 	m.advertisePort = uint16(port)
 }
 
-func (m *Memberlist) refreshAdvertise() (net.IP, int, error) {
+func (m *Members) refreshAdvertise() (net.IP, int, error) {
 	addr, port, err := m.transport.FinalAdvertiseAddr(
 		m.config.AdvertiseAddr, m.config.AdvertisePort)
 	if err != nil {
@@ -475,7 +475,7 @@ func (m *Memberlist) refreshAdvertise() (net.IP, int, error) {
 }
 
 // LocalNode is used to return the local Node
-func (m *Memberlist) LocalNode() *Node {
+func (m *Members) LocalNode() *Node {
 	m.nodeLock.RLock()
 	defer m.nodeLock.RUnlock()
 	state := m.nodeMap[m.config.Name]
@@ -487,7 +487,7 @@ func (m *Memberlist) LocalNode() *Node {
 // meta data.  This will block until the update message is successfully
 // broadcasted to a member of the cluster, if any exist or until a specified
 // timeout is reached.
-func (m *Memberlist) UpdateNode(timeout time.Duration) error {
+func (m *Members) UpdateNode(timeout time.Duration) error {
 	// Get the node meta data
 	var meta []byte
 	if m.config.Delegate != nil {
@@ -531,12 +531,12 @@ func (m *Memberlist) UpdateNode(timeout time.Duration) error {
 
 // Deprecated: SendTo is deprecated in favor of SendBestEffort, which requires a node to
 // target. If you don't have a node then use SendToAddress.
-func (m *Memberlist) SendTo(to net.Addr, msg []byte) error {
+func (m *Members) SendTo(to net.Addr, msg []byte) error {
 	a := Address{Addr: to.String(), Name: ""}
 	return m.SendToAddress(a, msg)
 }
 
-func (m *Memberlist) SendToAddress(a Address, msg []byte) error {
+func (m *Members) SendToAddress(a Address, msg []byte) error {
 	// Encode as a user message
 	buf := make([]byte, 1, len(msg)+1)
 	buf[0] = byte(userMsg)
@@ -547,12 +547,12 @@ func (m *Memberlist) SendToAddress(a Address, msg []byte) error {
 }
 
 // Deprecated: SendToUDP is deprecated in favor of SendBestEffort.
-func (m *Memberlist) SendToUDP(to *Node, msg []byte) error {
+func (m *Members) SendToUDP(to *Node, msg []byte) error {
 	return m.SendBestEffort(to, msg)
 }
 
 // Deprecated: SendToTCP is deprecated in favor of SendReliable.
-func (m *Memberlist) SendToTCP(to *Node, msg []byte) error {
+func (m *Members) SendToTCP(to *Node, msg []byte) error {
 	return m.SendReliable(to, msg)
 }
 
@@ -560,7 +560,7 @@ func (m *Memberlist) SendToTCP(to *Node, msg []byte) error {
 // to target a user message at the given node (this does not use the gossip
 // mechanism). The maximum size of the message depends on the configured
 // UDPBufferSize for this memberlist instance.
-func (m *Memberlist) SendBestEffort(to *Node, msg []byte) error {
+func (m *Members) SendBestEffort(to *Node, msg []byte) error {
 	// Encode as a user message
 	buf := make([]byte, 1, len(msg)+1)
 	buf[0] = byte(userMsg)
@@ -575,14 +575,14 @@ func (m *Memberlist) SendBestEffort(to *Node, msg []byte) error {
 // target a user message at the given node (this does not use the gossip
 // mechanism). Delivery is guaranteed if no error is returned, and there is no
 // limit on the size of the message.
-func (m *Memberlist) SendReliable(to *Node, msg []byte) error {
+func (m *Members) SendReliable(to *Node, msg []byte) error {
 	return m.sendUserMsg(to.FullAddress(), msg)
 }
 
 // Members returns a list of all known live nodes. The node structures
 // returned must not be modified. If you wish to modify a Node, make a
 // copy first.
-func (m *Memberlist) Members() []*Node {
+func (m *Members) Members() []*Node {
 	m.nodeLock.RLock()
 	defer m.nodeLock.RUnlock()
 
@@ -600,7 +600,7 @@ func (m *Memberlist) Members() []*Node {
 // the time of calling this and calling Members, the number of alive nodes
 // may have changed, so this shouldn't be used to determine how many
 // members will be returned by Members.
-func (m *Memberlist) NumMembers() (alive int) {
+func (m *Members) NumMembers() (alive int) {
 	m.nodeLock.RLock()
 	defer m.nodeLock.RUnlock()
 
@@ -623,7 +623,7 @@ func (m *Memberlist) NumMembers() (alive int) {
 //
 // This method is safe to call multiple times, but must not be called
 // after the cluster is already shut down.
-func (m *Memberlist) Leave(timeout time.Duration) error {
+func (m *Members) Leave(timeout time.Duration) error {
 	m.leaveLock.Lock()
 	defer m.leaveLock.Unlock()
 
@@ -671,7 +671,7 @@ func (m *Memberlist) Leave(timeout time.Duration) error {
 }
 
 // Check for any other alive node.
-func (m *Memberlist) anyAlive() bool {
+func (m *Members) anyAlive() bool {
 	m.nodeLock.RLock()
 	defer m.nodeLock.RUnlock()
 	for _, n := range m.nodes {
@@ -685,13 +685,13 @@ func (m *Memberlist) anyAlive() bool {
 // GetHealthScore gives this instance's idea of how well it is meeting the soft
 // real-time requirements of the protocol. Lower numbers are better, and zero
 // means "totally healthy".
-func (m *Memberlist) GetHealthScore() int {
+func (m *Members) GetHealthScore() int {
 	return m.awareness.GetHealthScore()
 }
 
 // ProtocolVersion returns the 协议版本 currently in use by
 // this memberlist.
-func (m *Memberlist) ProtocolVersion() uint8 {
+func (m *Members) ProtocolVersion() uint8 {
 	// NOTE: This method exists so that in the future we can control
 	// any locking if necessary, if we change the 协议版本 at
 	// runtime, etc.
@@ -705,7 +705,7 @@ func (m *Memberlist) ProtocolVersion() uint8 {
 // gracefully exit the cluster, call Leave prior to shutting down.
 //
 // This method is safe to call multiple times.
-func (m *Memberlist) Shutdown() error {
+func (m *Members) Shutdown() error {
 	m.shutdownLock.Lock()
 	defer m.shutdownLock.Unlock()
 
@@ -727,15 +727,15 @@ func (m *Memberlist) Shutdown() error {
 	return nil
 }
 
-func (m *Memberlist) hasShutdown() bool {
+func (m *Members) hasShutdown() bool {
 	return atomic.LoadInt32(&m.shutdown) == 1
 }
 
-func (m *Memberlist) hasLeft() bool {
+func (m *Members) hasLeft() bool {
 	return atomic.LoadInt32(&m.leave) == 1
 }
 
-func (m *Memberlist) getNodeState(addr string) NodeStateType {
+func (m *Members) getNodeState(addr string) NodeStateType {
 	m.nodeLock.RLock()
 	defer m.nodeLock.RUnlock()
 
@@ -743,7 +743,7 @@ func (m *Memberlist) getNodeState(addr string) NodeStateType {
 	return n.State
 }
 
-func (m *Memberlist) getNodeStateChange(addr string) time.Time {
+func (m *Members) getNodeStateChange(addr string) time.Time {
 	m.nodeLock.RLock()
 	defer m.nodeLock.RUnlock()
 
@@ -751,7 +751,7 @@ func (m *Memberlist) getNodeStateChange(addr string) time.Time {
 	return n.StateChange
 }
 
-func (m *Memberlist) changeNode(addr string, f func(*nodeState)) {
+func (m *Members) changeNode(addr string, f func(*nodeState)) {
 	m.nodeLock.Lock()
 	defer m.nodeLock.Unlock()
 
