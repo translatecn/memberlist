@@ -112,7 +112,7 @@ func (t *NetTransport) GetAutoBindPort() int {
 	return t.tcpListeners[0].Addr().(*net.TCPAddr).Port
 }
 
-// See Transport.
+// FinalAdvertiseAddr 返回公告地址.
 func (t *NetTransport) FinalAdvertiseAddr(ip string, port int) (net.IP, int, error) {
 	var advertiseAddr net.IP
 	var advertisePort int

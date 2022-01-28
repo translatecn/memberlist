@@ -26,9 +26,7 @@ type Packet struct {
 // interface is assumed to be best-effort and the stream interface is assumed to
 // be reliable.
 type Transport interface {
-	// FinalAdvertiseAddr is given the user's configured values (which
-	// might be empty) and returns the desired IP and port to advertise to
-	// the rest of the cluster.
+	// FinalAdvertiseAddr 返回所需的IP和端口，以通告到集群的其他部分。
 	FinalAdvertiseAddr(ip string, port int) (net.IP, int, error)
 
 	// WriteTo is a packet-oriented interface that fires off the given

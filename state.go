@@ -801,7 +801,7 @@ func (m *Members) skipIncarnation(offset uint32) uint32 {
 	return atomic.AddUint32(&m.incarnation, offset)
 }
 
-// estNumNodes is used to get the current estimate of the number of nodes
+// estNumNodes 用于获得当前估计的节点数
 func (m *Members) estNumNodes() int {
 	return int(atomic.LoadUint32(&m.numNodes))
 }

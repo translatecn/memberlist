@@ -209,9 +209,7 @@ func newMemberlist(conf *Config) (*Members, error) {
 		return m.estNumNodes()
 	}
 
-	// Get the final advertise address from the transport, which may need
-	// to see which address we bound to. We'll refresh this each time we
-	// send out an alive message.
+	// 从transport获得最终的地址，transport可能需要查看我们绑定到哪个地址。我们将在每次发送探活消息时刷新这个。
 	if _, _, err := m.refreshAdvertise(); err != nil {
 		return nil, err
 	}
@@ -464,11 +462,11 @@ func (m *Members) setAdvertise(addr net.IP, port int) {
 	m.advertisePort = uint16(port)
 }
 
+// 公布更新
 func (m *Members) refreshAdvertise() (net.IP, int, error) {
-	addr, port, err := m.transport.FinalAdvertiseAddr(
-		m.config.AdvertiseAddr, m.config.AdvertisePort)
+	addr, port, err := m.transport.FinalAdvertiseAddr(m.config.AdvertiseAddr, m.config.AdvertisePort)// "" 8000
 	if err != nil {
-		return nil, 0, fmt.Errorf("Failed to get final advertise address: %v", err)
+		return nil, 0, fmt.Errorf("获取地址失败: %v", err)
 	}
 	m.setAdvertise(addr, port)
 	return addr, port, nil
