@@ -232,7 +232,7 @@ START:
 	m.probeNode(&node)
 }
 
-// probeNodeByAddr just safely calls probeNode given only the address of the node (for tests)
+// OK
 func (m *Members) probeNodeByAddr(addr string) {
 	m.nodeLock.RLock()
 	n := m.nodeMap[addr]
@@ -263,13 +263,11 @@ func failedRemote(err error) bool {
 // probeNode 单个节点的故障检查。
 func (m *Members) probeNode(node *nodeState) {
 
-	//  The ticker that calls us can handle us running over the base interval, and will skip missed ticks.
 	// 我们使用我们的health awareness来扩展整个探测间隔，
 	// 所以如果我们检测到问题，我们会放慢速度。
 	// 调用我们的探测器可以处理我们运行超过基本间隔的情况，并会跳过错过的刻度。
-	probeInterval := m.Awareness.ScaleTimeout(m.config.ProbeInterval)
+	probeInterval := m.Awareness.ScaleTimeout(m.config.ProbeInterval) // 根据健康度、设置探活时间
 
-	// Prepare a ping message and setup an ack handler.
 	selfAddr, selfPort := m.getAdvertise()
 	ping := ping{
 		SeqNo:      m.nextSeqNo(),
@@ -727,7 +725,7 @@ func (m *Members) verifyProtocol(remote []pushNodeState) error {
 	return nil
 }
 
-// nextSeqNo returns a usable sequence number in a thread safe way
+// nextSeqNo 以线程安全的方式返回一个可用的序列号
 func (m *Members) nextSeqNo() uint32 {
 	return atomic.AddUint32(&m.sequenceNum, 1)
 }

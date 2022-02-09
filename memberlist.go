@@ -443,6 +443,7 @@ func (m *Members) setAlive() error {
 	return nil
 }
 
+//OK
 func (m *Members) getAdvertise() (net.IP, uint16) {
 	m.advertiseLock.RLock()
 	defer m.advertiseLock.RUnlock()
