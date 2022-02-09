@@ -41,5 +41,12 @@ associated [Godoc](http://godoc.org/github.com/hashicorp/memberlist).
 ``` 
 UDP gossip 
 TCP push/pull
+refute gossip
+```
 
+
+```
+m.gossip
+m.pushPull
+m.probeNode
 ```

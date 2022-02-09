@@ -20,11 +20,12 @@ type TransmitLimitedQueue struct {
 	idGen          int64
 }
 
+// 被限制的广播
 type limitedBroadcast struct {
-	transmits int   // btree-key[0]: Number of transmissions attempted.
-	msgLen    int64 // btree-key[1]: copied from len(b.Message())
-	id        int64 // btree-key[2]: unique incrementing id stamped at submission time
-	b         Broadcast
+	transmits int       // btree-key[0]: 尝试传输的次数
+	msgLen    int64     // btree-key[1]: 消息长度len(b.Message())
+	id        int64     // btree-key[2]: 提交时的唯一的递增标识
+	b         Broadcast // 广播消息
 
 	name string // set if Broadcast is a NamedBroadcast
 }
@@ -102,19 +103,15 @@ func (q *TransmitLimitedQueue) walkReadOnlyLocked(reverse bool, f func(*limitedB
 	}
 }
 
-// Broadcast is something that can be broadcasted via gossip to
-// the memberlist cluster.
+// Broadcast 通过gossip协议发送到集群中成员
 type Broadcast interface {
-	// Invalidates checks if enqueuing the current broadcast
-	// invalidates a previous broadcast
+	// Invalidates 检查 当前广播消息 是否使先前的广播无效
 	Invalidates(b Broadcast) bool
 
-	// Returns a byte form of the message
+	// Message 返回消息体
 	Message() []byte
 
-	// Finished is invoked when the message will no longer
-	// be broadcast, either due to invalidation or to the
-	// transmit limit being reached
+	// Finished 当信息不再被广播时被调用，无论是由于无效还是由于 达到发送限制
 	Finished()
 }
 
@@ -136,7 +133,7 @@ type Broadcast interface {
 // in the future.
 type NamedBroadcast interface {
 	Broadcast
-	// The unique identity of this broadcast message.
+	// Name 广播消息的唯一标识符 ,消息发送方的主机名
 	Name() string
 }
 
@@ -153,13 +150,12 @@ type UniqueBroadcast interface {
 	UniqueBroadcast()
 }
 
-// QueueBroadcast is used to enqueue a broadcast
+// QueueBroadcast 广播消息入队
 func (q *TransmitLimitedQueue) QueueBroadcast(b Broadcast) {
 	q.queueBroadcast(b, 0)
 }
 
-// lazyInit initializes internal data structures the first time they are
-// needed.  You must already hold the mutex.
+// lazyInit 初始化内部数据结构
 func (q *TransmitLimitedQueue) lazyInit() {
 	if q.tq == nil {
 		q.tq = btree.New(32)
@@ -169,17 +165,18 @@ func (q *TransmitLimitedQueue) lazyInit() {
 	}
 }
 
-// queueBroadcast is like QueueBroadcast but you can use a nonzero value for
-// the initial transmit tier assigned to the message. This is meant to be used
-// for unit testing.
 func (q *TransmitLimitedQueue) queueBroadcast(b Broadcast, initialTransmits int) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	q.lazyInit()
+	switch b.(type) {
+	case *memberlistBroadcast:
+	default:
+	}
 
 	if q.idGen == math.MaxInt64 {
-		// it's super duper unlikely to wrap around within the retransmit limit
+		//确保idGen不会超过MaxInt64,重置
 		q.idGen = 1
 	} else {
 		q.idGen++
@@ -187,26 +184,28 @@ func (q *TransmitLimitedQueue) queueBroadcast(b Broadcast, initialTransmits int)
 	id := q.idGen
 
 	lb := &limitedBroadcast{
-		transmits: initialTransmits,
+		transmits: initialTransmits, // 传输次数
 		msgLen:    int64(len(b.Message())),
 		id:        id,
 		b:         b,
 	}
 	unique := false
 	if nb, ok := b.(NamedBroadcast); ok {
+		var _ NamedBroadcast = &memberlistBroadcast{}
 		lb.name = nb.Name()
 	} else if _, ok := b.(UniqueBroadcast); ok {
 		unique = true
 	}
 
-	// Check if this message invalidates another.
+	// 检查这个消息是否使另一个消息无效。
 	if lb.name != "" {
 		if old, ok := q.tm[lb.name]; ok {
 			old.b.Finished()
 			q.deleteItem(old)
 		}
 	} else if !unique {
-		// Slow path, hopefully nothing hot hits this.
+		// lb.name == "" && unique == false
+		//
 		var remove []*limitedBroadcast
 		q.tq.Ascend(func(item btree.Item) bool {
 			cur := item.(*limitedBroadcast)

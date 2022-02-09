@@ -29,11 +29,12 @@ func (b *memberlistBroadcast) Invalidates(other Broadcast) bool {
 	return b.node == mb.node
 }
 
-// memberlist.NamedBroadcast optional interface
+// Name ok
 func (b *memberlistBroadcast) Name() string {
 	return b.node
 }
 
+// Message OK
 func (b *memberlistBroadcast) Message() []byte {
 	return b.msg
 }
@@ -51,21 +52,28 @@ func (m *Members) encodeAndBroadcast(node string, msgType messageType, msg inter
 	m.encodeBroadcastNotify(node, msgType, msg, nil)
 }
 
-// encodeBroadcastNotify encodes a message and enqueues it for broadcast
-// and notifies the given channel when transmission is finished. Fails
-// silently if there is an encoding error.
+// encodeBroadcastNotify 编码消息,并将其入队用于广播
 func (m *Members) encodeBroadcastNotify(node string, msgType messageType, msg interface{}, notify chan struct{}) {
 	buf, err := encode(msgType, msg)
+
+	switch msg.(type) {
+	case *alive:
+	case *dead:
+	case *suspect:
+	default:
+
+	}
+
 	if err != nil {
-		m.logger.Printf("[错误] memberlist: Failed to encode message for broadcast: %s", err)
+		m.logger.Printf("[错误] memberlist: 编码用于广播的消息失败: %s", err)
 	} else {
 		m.queueBroadcast(node, buf.Bytes(), notify)
 	}
 }
 
 // queueBroadcast is used to start dissemination of a message. It will be
-// sent up to a configured number of times. The message could potentially
-// be invalidated by a future message about the same node
+// sent up to a configured number of times.
+// 开始广播消息,它将被发送至配置的次数。该消息有可能被未来关于同一节点的消息所废止。
 func (m *Members) queueBroadcast(node string, msg []byte, notify chan struct{}) {
 	b := &memberlistBroadcast{node, msg, notify}
 	m.broadcasts.QueueBroadcast(b)

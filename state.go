@@ -79,7 +79,7 @@ func (n *nodeState) DeadOrLeft() bool {
 	return n.State == StateDead || n.State == StateLeft
 }
 
-// ackHandler is used to register handlers for incoming acks and nacks.
+// ackHandler 注册确认、否认处理函数
 type ackHandler struct {
 	ackFn  func([]byte, time.Time)
 	nackFn func()
@@ -106,10 +106,11 @@ func (m *Members) schedule() {
 
 	stopCh := make(chan struct{})
 
-	// 定时探活
+	// 开始定时探活
 	if m.config.ProbeInterval > 0 {
-		t := time.NewTicker(m.config.ProbeInterval)
+		t := time.NewTicker(m.config.ProbeInterval) // config.go:190 1s
 		go m.triggerFunc(m.config.ProbeInterval, t.C, stopCh, m.probe)
+		//m.probe()
 		m.tickers = append(m.tickers, t)
 	}
 
@@ -119,7 +120,7 @@ func (m *Members) schedule() {
 	}
 
 	// gossip 定时器
-	if m.config.GossipInterval > 0 && m.config.GossipNodes > 0 {
+	if m.config.GossipInterval > 0 && m.config.GossipNodes > 0 { // 每隔100ms,将消息随机发送到3个节点
 		t := time.NewTicker(m.config.GossipInterval)
 		go m.triggerFunc(m.config.GossipInterval, t.C, stopCh, m.gossip)
 		m.tickers = append(m.tickers, t)
@@ -129,11 +130,10 @@ func (m *Members) schedule() {
 	}
 }
 
-// triggerFunc is used to trigger a function call each time a
-// message is received until a stop tick arrives.
+// triggerFunc 没收到一条消息就执行f(),知道收到stop信号
 func (m *Members) triggerFunc(stagger time.Duration, C <-chan time.Time, stop <-chan struct{}, f func()) {
-	// Use a random stagger to avoid syncronizing
 	randStagger := time.Duration(uint64(rand.Int63()) % uint64(stagger))
+	// 开始时 随机睡眠0~stagger
 	select {
 	case <-time.After(randStagger):
 	case <-stop:
@@ -149,22 +149,17 @@ func (m *Members) triggerFunc(stagger time.Duration, C <-chan time.Time, stop <-
 	}
 }
 
-// pushPullTrigger is used to periodically trigger a push/pull until
-// a stop tick arrives. We don't use triggerFunc since the push/pull
-// timer is dynamically scaled based on cluster size to avoid network
-// saturation
+// 周期性的push\pull 直到收到stop信号。不使用triggerFunc，因为触发时间不固定，基于集群大小避免网络堵塞
 func (m *Members) pushPullTrigger(stop <-chan struct{}) {
 	interval := m.config.PushPullInterval
-
-	// Use a random stagger to avoid syncronizing
+	// 开始时 随机睡眠0~randStagger
 	randStagger := time.Duration(uint64(rand.Int63()) % uint64(interval))
 	select {
 	case <-time.After(randStagger):
 	case <-stop:
 		return
 	}
-
-	// Tick using a dynamic timer
+	// 使用动态的ticker
 	for {
 		tickTime := pushPullScale(interval, m.estNumNodes())
 		select {
@@ -196,48 +191,44 @@ func (m *Members) deschedule() {
 	m.tickers = nil
 }
 
-// Tick用于执行单轮故障检测
+// 用于对所有节点的探活
 func (m *Members) probe() {
 	// 探测过的数量
 	numCheck := 0
 START:
 	m.nodeLock.RLock()
 
-	// Make sure we don't wrap around infinitely
+	// 当所有的节点都检查完了一遍
 	if numCheck >= len(m.nodes) {
 		m.nodeLock.RUnlock()
 		return
 	}
 
-	// Handle the wrap around case
 	if m.probeIndex >= len(m.nodes) {
 		m.nodeLock.RUnlock()
-		m.resetNodes()
+		m.resetNodes() // 清理无效节点,打乱顺序
 		m.probeIndex = 0
 		numCheck++
 		goto START
 	}
-
-	// Determine if we should probe this node
+	// 是否跳过节点探测
 	skip := false
 	var node nodeState
 
 	node = *m.nodes[m.probeIndex]
+	// 本机 或 节点在dead、left的状态都跳过
 	if node.Name == m.config.Name {
 		skip = true
 	} else if node.DeadOrLeft() {
 		skip = true
 	}
 
-	// Potentially skip
 	m.nodeLock.RUnlock()
 	m.probeIndex++
 	if skip {
 		numCheck++
 		goto START
 	}
-
-	// Probe the specific node
 	m.probeNode(&node)
 }
 
@@ -250,8 +241,7 @@ func (m *Members) probeNodeByAddr(addr string) {
 	m.probeNode(n)
 }
 
-// failedRemote checks the error and decides if it indicates a failure on the
-// other end.
+// failedRemote 检查错误并决定它是否表明另一端有故障。
 func failedRemote(err error) bool {
 	switch t := err.(type) {
 	case *net.OpError:
@@ -270,12 +260,13 @@ func failedRemote(err error) bool {
 	return false
 }
 
-// probeNode handles a single round of failure checking on a node.
+// probeNode 单个节点的故障检查。
 func (m *Members) probeNode(node *nodeState) {
 
-	// We use our health awareness to scale the overall probe interval, so we
-	// slow down if we detect problems. The ticker that calls us can handle
-	// us running over the base interval, and will skip missed ticks.
+	//  The ticker that calls us can handle us running over the base interval, and will skip missed ticks.
+	// 我们使用我们的health awareness来扩展整个探测间隔，
+	// 所以如果我们检测到问题，我们会放慢速度。
+	// 调用我们的探测器可以处理我们运行超过基本间隔的情况，并会跳过错过的刻度。
 	probeInterval := m.awareness.ScaleTimeout(m.config.ProbeInterval)
 
 	// Prepare a ping message and setup an ack handler.
@@ -527,28 +518,26 @@ func (m *Members) Ping(node string, addr net.Addr) (time.Duration, error) {
 	return 0, NoPingResponseError{ping.Node}
 }
 
-// resetNodes is used when the tick wraps around. It will reap the
-// dead nodes and shuffle the node list.
+// resetNodes 清除dead节点,并将节点列表刷新
 func (m *Members) resetNodes() {
 	m.nodeLock.Lock()
 	defer m.nodeLock.Unlock()
 
-	// Move dead nodes, but respect gossip to the dead interval
+	// 移除dead node ,超过了dead interval的
 	deadIdx := moveDeadNodes(m.nodes, m.config.GossipToTheDeadTime)
-
-	// Deregister the dead nodes
+	// 第一个在m.nodes dead的节点的索引
 	for i := deadIdx; i < len(m.nodes); i++ {
 		delete(m.nodeMap, m.nodes[i].Name)
 		m.nodes[i] = nil
 	}
 
-	// Trim the nodes to exclude the dead nodes
+	// 修剪节点以排除死节点
 	m.nodes = m.nodes[0:deadIdx]
 
-	// Update numNodes after we've trimmed the dead nodes
+	// 更新集群节点数量
 	atomic.StoreUint32(&m.numNodes, uint32(deadIdx))
 
-	// Shuffle live nodes
+	// 打乱节点列表
 	shuffleNodes(m.nodes)
 }
 
@@ -776,7 +765,7 @@ func (m *Members) nextIncarnation() uint32 {
 	return atomic.AddUint32(&m.incarnation, 1)
 }
 
-// skipIncarnation adds the positive offset to the incarnation number.
+// skipIncarnation incarnation number添加偏移量
 func (m *Members) skipIncarnation(offset uint32) uint32 {
 	return atomic.AddUint32(&m.incarnation, offset)
 }
@@ -872,23 +861,19 @@ func (m *Members) invokeNackHandler(nack nackResp) {
 	ah.nackFn()
 }
 
-// refute gossips an alive message in response to incoming information that we
-// are suspect or dead. It will make sure the incarnation number beats the given
-// accusedInc value, or you can supply 0 to just get the next incarnation number.
-// This alters the node state that's passed in so this MUST be called while the
-// nodeLock is held.
+// 当收到传来的关于本节点被怀疑或死亡的信息时，会发送一个alive gossip message。
+// 它将确保incarnation超过给定的 accusedInc 值，或者你可以提供 0 来获取下一个incarnation。
+// 这将改变传入的节点状态，所以必须在持有nodeLock情况下调用这个。
 func (m *Members) refute(me *nodeState, accusedInc uint32) {
-	// Make sure the incarnation number beats the accusation.
 	inc := m.nextIncarnation()
 	if accusedInc >= inc {
 		inc = m.skipIncarnation(accusedInc - inc + 1)
 	}
 	me.Incarnation = inc
 
-	// Decrease our health because we are being asked to refute a problem.
+	// 减少health，因为我们被要求反驳一个问题。
 	m.awareness.ApplyDelta(1)
 
-	// Format and broadcast an alive message.
 	a := alive{
 		Incarnation: inc,
 		Node:        me.Name,
@@ -1039,43 +1024,34 @@ func (m *Members) aliveNode(a *alive, notify chan struct{}, bootstrap bool) {
 		return
 	}
 
-	// 清理可能生效的任何可疑的计时器。
+	// 清理可能生效的计时器。
 	delete(m.nodeTimers, a.Node)
 
-	// Store the old state and meta data
 	oldState := state.State
 	oldMeta := state.Meta
 
-	// If this is us we need to refute, otherwise re-broadcast
-	if !bootstrap && isLocalNode {
-		// Compute the version vector
+	if !bootstrap && isLocalNode { // 运行初是     true,true,不会走这里
 		versions := []uint8{
 			state.PMin, state.PMax, state.PCur,
 			state.DMin, state.DMax, state.DCur,
 		}
-
+		// TODO
 		// If the Incarnation is the same, we need special handling, since it
 		// possible for the following situation to happen:
 		// 1) Start with configuration C, join cluster
 		// 2) Hard fail / Kill / Shutdown
 		// 3) Restart with configuration C', join cluster
-		//
-		// In this case, other nodes and the local node see the same incarnation,
-		// but the values may not be the same. For this reason, we always
-		// need to do an equality check for this Incarnation. In most cases,
-		// we just ignore, but we may need to refute.
-		//
-		if a.Incarnation == state.Incarnation &&
-			bytes.Equal(a.Meta, state.Meta) &&
-			bytes.Equal(a.Vsn, versions) {
+		// 在这种情况下，其他节点和本地节点看到的是同一个incarnation，但数值可能不一样。
+		// 出于这个原因，我们总是需要做一个一致性检查。在大多数情况下，我们只是忽略，但我们可能需要反驳。
+		if a.Incarnation == state.Incarnation && bytes.Equal(a.Meta, state.Meta) && bytes.Equal(a.Vsn, versions) {
 			return
 		}
 		m.refute(state, a.Incarnation)
-		m.logger.Printf("[WARN] memberlist: Refuting an alive message for '%s' (%v:%d) meta:(%v VS %v), vsn:(%v VS %v)", a.Node, net.IP(a.Addr), a.Port, a.Meta, state.Meta, a.Vsn, versions)
+		m.logger.Printf("[WARN] memberlist: 拒绝alive消息 '%s' (%v:%d) meta:(%v VS %v), vsn:(%v VS %v)", a.Node, net.IP(a.Addr), a.Port, a.Meta, state.Meta, a.Vsn, versions)
 	} else {
+		// 运行初走这里;
 		m.encodeBroadcastNotify(a.Node, aliveMsg, a, notify)
-
-		// Update 协议版本s if it arrived
+		// 更新数据
 		if len(a.Vsn) > 0 {
 			state.PMin = a.Vsn[0]
 			state.PMax = a.Vsn[1]
@@ -1084,26 +1060,23 @@ func (m *Members) aliveNode(a *alive, notify chan struct{}, bootstrap bool) {
 			state.DMax = a.Vsn[4]
 			state.DCur = a.Vsn[5]
 		}
-
-		// Update the state and incarnation number
 		state.Incarnation = a.Incarnation
 		state.Meta = a.Meta
 		state.Addr = a.Addr
 		state.Port = a.Port
 		if state.State != StateAlive {
+			// 初始状态是StateDead
 			state.State = StateAlive
 			state.StateChange = time.Now()
 		}
 	}
 
-	// Notify the delegate of any relevant updates
+	// 通知 delegate 一旦有任何相关的更新信息
 	if m.config.Events != nil {
 		if oldState == StateDead || oldState == StateLeft {
-			// if Dead/Left -> Alive, notify of join
+			// Dead/Left -> Alive, notify of join
 			m.config.Events.NotifyJoin(&state.Node)
-
 		} else if !bytes.Equal(oldMeta, state.Meta) {
-			// if Meta changed, trigger an update notification
 			m.config.Events.NotifyUpdate(&state.Node)
 		}
 	}

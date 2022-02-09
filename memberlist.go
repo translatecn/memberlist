@@ -61,15 +61,15 @@ type Members struct {
 	msgQueueLock         sync.Mutex
 
 	nodeLock   sync.RWMutex
+	probeIndex int                   // 节点探活索引  与nodes对应
 	nodes      []*nodeState          // Known nodes
 	nodeMap    map[string]*nodeState // ls-2018.local -> NodeState
-	nodeTimers map[string]*suspicion // Maps Node.Name -> suspicion timer
+	nodeTimers map[string]*suspicion // ls-2018.local -> suspicion timer
 	awareness  *awareness
 
 	tickerLock sync.Mutex
 	tickers    []*time.Ticker
 	stopTickCh chan struct{}
-	probeIndex int
 
 	ackLock     sync.Mutex
 	ackHandlers map[uint32]*ackHandler
@@ -243,6 +243,7 @@ func Create(conf *Config) (*Members, error) {
 // This returns the number of hosts successfully contacted and an error if
 // none could be reached. If an error is returned, the node did not successfully
 // join the cluster.
+
 func (m *Members) Join(existing []string) (int, error) {
 	numSuccess := 0
 	var errs error
@@ -435,14 +436,14 @@ func (m *Members) setAlive() error {
 	}
 
 	a := alive{
-		Incarnation: m.nextIncarnation(),// 1 周期性的full state sync，使用incarnation number去调协
-		Node:        m.config.Name, // 节点名字、唯一
+		Incarnation: m.nextIncarnation(), // 1 周期性的full state sync，使用incarnation number去调协
+		Node:        m.config.Name,       // 节点名字、唯一
 		Addr:        addr,
 		Port:        uint16(port),
 		Meta:        meta,
 		Vsn:         m.config.BuildVsnArray(),
 	}
-	m.aliveNode(&a, nil, true)
+	m.aliveNode(&a, nil, true) // 存储节点state,广播存活消息
 
 	return nil
 }
@@ -577,9 +578,7 @@ func (m *Members) SendReliable(to *Node, msg []byte) error {
 	return m.sendUserMsg(to.FullAddress(), msg)
 }
 
-// Members returns a list of all known live nodes. The node structures
-// returned must not be modified. If you wish to modify a Node, make a
-// copy first.
+// Members returns 返回已知的存活节点,返回的结构体不能被修改。
 func (m *Members) Members() []*Node {
 	m.nodeLock.RLock()
 	defer m.nodeLock.RUnlock()

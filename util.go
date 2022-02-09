@@ -83,11 +83,9 @@ func shuffleNodes(nodes []*nodeState) {
 	})
 }
 
-// pushPushScale is used to scale the time interval at which push/pull
-// syncs take place. It is used to prevent network saturation as the
-// cluster size grows
+// push\pull 间隔，需要随着集群规模变化。避免集群增大，网络阻塞
 func pushPullScale(interval time.Duration, n int) time.Duration {
-	// Don't scale until we cross the threshold
+	// 节点数小于32个,时间不变
 	if n <= pushPullScaleThreshold {
 		return interval
 	}
@@ -96,23 +94,23 @@ func pushPullScale(interval time.Duration, n int) time.Duration {
 	return time.Duration(multiplier) * interval
 }
 
-// moveDeadNodes moves dead and left nodes that that have not changed during the gossipToTheDeadTime interval
-// to the end of the slice and returns the index of the first moved node.
+// moveDeadNodes 移除dead\left节点 超过一个gossipToTheDeadTime间隔的;并返回当前依然存活的节点个数
 func moveDeadNodes(nodes []*nodeState, gossipToTheDeadTime time.Duration) int {
 	numDead := 0
 	n := len(nodes)
+	// 【a,b,c,d,e,f,g,h,j,k,l】
 	for i := 0; i < n-numDead; i++ {
 		if !nodes[i].DeadOrLeft() {
 			continue
 		}
 
-		// Respect the gossip to the dead interval
+		// 判断节点的dead超时有没有到
 		if time.Since(nodes[i].StateChange) <= gossipToTheDeadTime {
 			continue
 		}
 
-		// Move this node to the end
-		nodes[i], nodes[n-numDead-1] = nodes[n-numDead-1], nodes[i]
+		// 将节点移至最后
+		nodes[i], nodes[n-numDead-1] = nodes[n-numDead-1], nodes[i]// 存活节点、当前节点
 		numDead++
 		i--
 	}

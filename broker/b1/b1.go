@@ -19,7 +19,7 @@ func main() {
 	conf.AdvertisePort = port               // 向其他集群成员发布的地址
 	conf.BindPort = port                    //TODO 集群中的节点通过绑定port进行通信
 	dev.Println(conf)
-	list, err := memberlist.Create(conf)
+	list, err := memberlist.Create(conf)// 节点探测、push\pull、gossip消息发送服务
 	if err != nil {
 		panic("Failed to create memberlist: " + err.Error())
 	}
@@ -30,7 +30,7 @@ func main() {
 		panic("Failed to join cluster: " + err.Error())
 	}
 	time.Sleep(time.Second * 10)
-	for _, member := range list.Members() {
+	for _, member := range list.Members() { // 读取的m.nodes列表
 		fmt.Printf("Member: %s %s\n", member.Name, member.Addr)
 	}
 	fmt.Println(n)
