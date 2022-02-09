@@ -102,7 +102,7 @@ userMsg
 1、StateDead与StateLeft的区别
 
 
-
+2、广播出去的包，server怎么处理
 
 
 

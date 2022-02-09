@@ -267,7 +267,7 @@ func (m *Members) probeNode(node *nodeState) {
 	// 我们使用我们的health awareness来扩展整个探测间隔，
 	// 所以如果我们检测到问题，我们会放慢速度。
 	// 调用我们的探测器可以处理我们运行超过基本间隔的情况，并会跳过错过的刻度。
-	probeInterval := m.awareness.ScaleTimeout(m.config.ProbeInterval)
+	probeInterval := m.Awareness.ScaleTimeout(m.config.ProbeInterval)
 
 	// Prepare a ping message and setup an ack handler.
 	selfAddr, selfPort := m.getAdvertise()
@@ -298,7 +298,7 @@ func (m *Members) probeNode(node *nodeState) {
 	// Arrange for our self-awareness to get updated.
 	var awarenessDelta int
 	defer func() {
-		m.awareness.ApplyDelta(awarenessDelta)
+		m.Awareness.ApplyDelta(awarenessDelta)
 	}()
 	if node.State == StateAlive {
 		if err := m.encodeAndSendMsg(node.FullAddress(), pingMsg, &ping); err != nil {
@@ -844,7 +844,7 @@ func (m *Members) refute(me *nodeState, accusedInc uint32) {
 	me.Incarnation = inc
 
 	// 减少health，因为我们被要求反驳一个问题。
-	m.awareness.ApplyDelta(1)
+	m.Awareness.ApplyDelta(1)
 
 	a := alive{
 		Incarnation: inc,

@@ -186,30 +186,6 @@ func (q *TransmitLimitedQueue) queueBroadcast(b Broadcast, initialTransmits int)
 	q.addItem(lb)
 }
 
-// deleteItem removes the given item from the overall datastructure. You
-// must already hold the mutex.
-func (q *TransmitLimitedQueue) deleteItem(cur *limitedBroadcast) {
-	_ = q.tq.Delete(cur)
-	if cur.name != "" {
-		delete(q.tm, cur.name)
-	}
-
-	if q.tq.Len() == 0 {
-		// At idle there's no reason to let the id generator keep going
-		// indefinitely.
-		q.idGen = 0
-	}
-}
-
-// addItem adds the given item into the overall datastructure. You must already
-// hold the mutex.
-func (q *TransmitLimitedQueue) addItem(cur *limitedBroadcast) {
-	_ = q.tq.ReplaceOrInsert(cur)
-	if cur.name != "" {
-		q.tm[cur.name] = cur
-	}
-}
-
 // getTransmitRange returns a pair of min/max values for transmit values
 // represented by the current queue_broadcast contents. Both values represent actual
 // transmit values on the interval [0, len). You must already hold the mutex.
@@ -363,5 +339,27 @@ func (q *TransmitLimitedQueue) Prune(maxRetain int) {
 		cur := item.(*limitedBroadcast)
 		cur.B.Finished()
 		q.deleteItem(cur)
+	}
+}
+
+// -------------------------------------------- OK -----------------------------------------------
+// deleteItem 删除给定的项目。你必须已经持有该mutex。
+func (q *TransmitLimitedQueue) deleteItem(cur *limitedBroadcast) {
+	_ = q.tq.Delete(cur)
+	if cur.name != "" {
+		delete(q.tm, cur.name)
+	}
+
+	if q.tq.Len() == 0 {
+		// 在闲暇时，没有理由让idGen无限期地继续下去。
+		q.idGen = 0
+	}
+}
+
+// addItem 将给定的项目添加到整个数据结构中。你必须已经持有该mutex。
+func (q *TransmitLimitedQueue) addItem(cur *limitedBroadcast) {
+	_ = q.tq.ReplaceOrInsert(cur)
+	if cur.name != "" {
+		q.tm[cur.name] = cur
 	}
 }

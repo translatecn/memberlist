@@ -67,7 +67,7 @@ type Members struct {
 	nodes      []*nodeState          // Known nodes
 	nodeMap    map[string]*nodeState // ls-2018.local -> NodeState
 	nodeTimers map[string]*suspicion // ls-2018.local -> suspicion timer
-	awareness  *awareness
+	Awareness  *pkg.Awareness
 
 	tickerLock sync.Mutex
 	tickers    []*time.Ticker
@@ -202,7 +202,7 @@ func newMembers(conf *Config) (*Members, error) {
 		lowPriorityMsgQueue:  list.New(), // 低优先级消息队列
 		nodeMap:              make(map[string]*nodeState),
 		nodeTimers:           make(map[string]*suspicion),
-		awareness:            newAwareness(conf.AwarenessMaxMultiplier), // 感知对象
+		Awareness:            pkg.NewAwareness(conf.AwarenessMaxMultiplier), // 感知对象
 		ackHandlers:          make(map[uint32]*ackHandler),
 		broadcasts:           &queue_broadcast.TransmitLimitedQueue{RetransmitMult: conf.RetransmitMult},
 		logger:               logger,
@@ -604,11 +604,9 @@ func (m *Members) anyAlive() bool {
 	return false
 }
 
-// GetHealthScore gives this instance's idea of how well it is meeting the soft
-// real-time requirements of the protocol. Lower numbers are better, and zero
-// means "totally healthy".
+// GetHealthScore 节点的健康程度 数字越小越好，而零意味着 "完全健康"。
 func (m *Members) GetHealthScore() int {
-	return m.awareness.GetHealthScore()
+	return m.Awareness.GetHealthScore()
 }
 
 // ProtocolVersion 返回当前的协议版本

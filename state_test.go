@@ -598,7 +598,7 @@ func TestMemberList_ProbeNode_Awareness_Degraded(t *testing.T) {
 	m1.aliveNode(&a4, nil, false)
 
 	// Start the health in a degraded state.
-	m1.awareness.ApplyDelta(1)
+	m1.Awareness.ApplyDelta(1)
 	if score := m1.GetHealthScore(); score != 1 {
 		t.Fatalf("bad: %d", score)
 	}
@@ -680,7 +680,7 @@ func TestMemberList_ProbeNode_Wrong_VSN(t *testing.T) {
 	m1.aliveNode(&a4, nil, false)
 
 	// Start the health in a degraded state.
-	m1.awareness.ApplyDelta(1)
+	m1.Awareness.ApplyDelta(1)
 	if score := m1.GetHealthScore(); score != 1 {
 		t.Fatalf("bad: %d", score)
 	}
@@ -717,7 +717,7 @@ func TestMemberList_ProbeNode_Awareness_Improved(t *testing.T) {
 	m1.aliveNode(&a2, nil, false)
 
 	// Start the health in a degraded state.
-	m1.awareness.ApplyDelta(1)
+	m1.Awareness.ApplyDelta(1)
 	if score := m1.GetHealthScore(); score != 1 {
 		t.Fatalf("bad: %d", score)
 	}

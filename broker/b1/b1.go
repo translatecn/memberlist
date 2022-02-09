@@ -35,4 +35,5 @@ func main() {
 	}
 	fmt.Println(n)
 	time.Sleep(time.Second * 1000)
+	list.GetHealthScore()
 }
