@@ -6,6 +6,7 @@ import (
 	"github.com/hashicorp/go-sockaddr"
 	"net"
 	"runtime"
+	"strconv"
 	"time"
 )
 
@@ -32,4 +33,5 @@ func main() {
 		go fmt.Println(i)
 	}
 	time.Sleep(time.Second)
+	fmt.Println(net.JoinHostPort("f8:ff:c2:29:49:4f", strconv.Itoa(2223)))
 }

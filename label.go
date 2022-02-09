@@ -80,8 +80,7 @@ func AddLabelHeaderToStream(conn net.Conn, label string) error {
 // the stream if present and returns it along with an updated conn with that
 // header removed.
 //
-// Note that on error it is the caller's responsibility to close the
-// connection.
+// 请注意，当出现错误时，关闭连接是调用者的责任。
 func RemoveLabelHeaderFromStream(conn net.Conn) (net.Conn, string, error) {
 	br := bufio.NewReader(conn)
 

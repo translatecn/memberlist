@@ -30,8 +30,7 @@ type NetTransportConfig struct {
 	Logger    *log.Logger
 }
 
-// NetTransport is a Transport implementation that uses connectionless UDP for
-// packet operations, and ad-hoc TCP connections for stream operations.
+// NetTransport 是一个传输实现，使用无连接的UDP进行数据包操作，并使用临时的TCP连接进行流操作。
 type NetTransport struct {
 	config       *NetTransportConfig
 	packetCh     chan *Packet
@@ -165,7 +164,7 @@ func (t *NetTransport) WriteTo(b []byte, addr string) (time.Time, error) {
 // WriteToAddress 往a发送数据
 func (t *NetTransport) WriteToAddress(b []byte, a Address) (time.Time, error) {
 	addr := a.Addr
-	fmt.Println("ResolveUDPAddr;------>",addr)
+	fmt.Println("ResolveUDPAddr;------>", addr)
 	udpAddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
 		return time.Time{}, err
@@ -212,13 +211,13 @@ func (t *NetTransport) IngestPacket(conn net.Conn, addr net.Addr, now time.Time,
 	return nil
 }
 
-// See Transport.
+// DialTimeout 与a建联，设置了超时时间
 func (t *NetTransport) DialTimeout(addr string, timeout time.Duration) (net.Conn, error) {
 	a := Address{Addr: addr, Name: ""}
 	return t.DialAddressTimeout(a, timeout)
 }
 
-// See NodeAwareTransport.
+// DialAddressTimeout 与a建联，设置了超时时间
 func (t *NetTransport) DialAddressTimeout(a Address, timeout time.Duration) (net.Conn, error) {
 	addr := a.Addr
 
@@ -226,8 +225,9 @@ func (t *NetTransport) DialAddressTimeout(a Address, timeout time.Duration) (net
 	return dialer.Dial("tcp", addr)
 }
 
-// See Transport.
+// StreamCh 返回新建立的流连接
 func (t *NetTransport) StreamCh() <-chan net.Conn {
+	//net.go:912
 	return t.streamCh
 }
 
@@ -241,7 +241,6 @@ func (t *NetTransport) IngestStream(conn net.Conn) error {
 func (t *NetTransport) Shutdown() error {
 	// 这将避免在我们关闭时出现关于错误的日志垃圾。
 	atomic.StoreInt32(&t.shutdown, 1)
-
 	// 对所有的连接，关闭它们。
 	for _, conn := range t.tcpListeners {
 		conn.Close()
@@ -249,22 +248,18 @@ func (t *NetTransport) Shutdown() error {
 	for _, conn := range t.udpListeners {
 		conn.Close()
 	}
-
 	t.wg.Wait()
 	return nil
 }
 
-// tcpListen is a long running goroutine that accepts incoming TCP connections
-// and hands them off to the stream channel.
+// tcpListen 处理创建的TCP链接
 func (t *NetTransport) tcpListen(tcpLn *net.TCPListener) {
 	defer t.wg.Done()
 
-	// baseDelay is the initial delay after an AcceptTCP() error before attempting again
+	//baseDelay是AcceptTCP()出错后，再次尝试的初始延迟。
 	const baseDelay = 5 * time.Millisecond
 
-	// maxDelay is the maximum delay after an AcceptTCP() error before attempting again.
-	// In the case that tcpListen() is error-looping, it will delay the shutdown check.
-	// Therefore, changes to maxDelay may have an effect on the latency of shutdown.
+	//maxDelay是AcceptTCP()出错后，再次尝试的最大延迟。在tcpListen()是错误循环的情况下，它将延迟关机检查。因此，对maxDelay的改变可能会对关机的延迟产生影响。
 	const maxDelay = 1 * time.Second
 
 	var loopDelay time.Duration
@@ -285,19 +280,18 @@ func (t *NetTransport) tcpListen(tcpLn *net.TCPListener) {
 				loopDelay = maxDelay
 			}
 
-			t.logger.Printf("[错误] memberlist: Error accepting TCP connection: %v", err)
+			t.logger.Printf("[错误] memberlist: 接收TCP链接失败: %v", err)
 			time.Sleep(loopDelay)
 			continue
 		}
-		// No error, reset loop delay
+		// 没有错误，复位循环延迟
 		loopDelay = 0
-
+		//net.go:912
 		t.streamCh <- conn
 	}
 }
 
-// udpListen is a long running goroutine that accepts incoming UDP packets and
-// hands them off to the packet channel.
+// udpListen 处理创建的UDP链接
 func (t *NetTransport) udpListen(udpLn *net.UDPConn) {
 	defer t.wg.Done()
 	for {

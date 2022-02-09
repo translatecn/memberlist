@@ -17,11 +17,6 @@ import (
 	"github.com/sean-/seed"
 )
 
-// pushPullScale is the minimum number of nodes
-// before we start scaling the push/pull timing. The scale
-// effect is the log2(Nodes) - log2(pushPullScale). This means
-// that the 33rd node will cause us to double the interval,
-// while the 65th will triple it.
 const pushPullScaleThreshold = 32
 
 const (
@@ -33,7 +28,7 @@ func init() {
 	seed.Init()
 }
 
-// Decode reverses the encode operation on a byte slice input
+// 解码
 func decode(buf []byte, out interface{}) error {
 	r := bytes.NewReader(buf)
 	hd := codec.MsgpackHandle{}
@@ -41,7 +36,7 @@ func decode(buf []byte, out interface{}) error {
 	return dec.Decode(out)
 }
 
-// Encode writes an encoded object to a new bytes buffer
+// Encode 编码
 func encode(msgType messageType, in interface{}) (*bytes.Buffer, error) {
 	buf := bytes.NewBuffer(nil)
 	buf.WriteByte(uint8(msgType))
@@ -110,7 +105,7 @@ func moveDeadNodes(nodes []*nodeState, gossipToTheDeadTime time.Duration) int {
 		}
 
 		// 将节点移至最后
-		nodes[i], nodes[n-numDead-1] = nodes[n-numDead-1], nodes[i]// 存活节点、当前节点
+		nodes[i], nodes[n-numDead-1] = nodes[n-numDead-1], nodes[i] // 存活节点、当前节点
 		numDead++
 		i--
 	}
@@ -231,8 +226,7 @@ func decodeCompoundMessage(buf []byte) (trunc int, parts [][]byte, err error) {
 	return
 }
 
-// compressPayload takes an opaque input buffer, compresses it
-// and wraps it in a compress{} message that is encoded.
+// 压缩
 func compressPayload(inp []byte) (*bytes.Buffer, error) {
 	var buf bytes.Buffer
 	compressor := lzw.NewWriter(&buf, lzw.LSB, lzwLitWidth)
@@ -242,12 +236,10 @@ func compressPayload(inp []byte) (*bytes.Buffer, error) {
 		return nil, err
 	}
 
-	// Ensure we flush everything out
 	if err := compressor.Close(); err != nil {
 		return nil, err
 	}
 
-	// Create a compressed message
 	c := compress{
 		Algo: lzwAlgo,
 		Buf:  buf.Bytes(),
@@ -255,10 +247,8 @@ func compressPayload(inp []byte) (*bytes.Buffer, error) {
 	return encode(compressMsg, &c)
 }
 
-// decompressPayload is used to unpack an encoded compress{}
-// message and return its payload uncompressed
+// decompressPayload 解压缩
 func decompressPayload(msg []byte) ([]byte, error) {
-	// Decode the message
 	var c compress
 	if err := decode(msg, &c); err != nil {
 		return nil, err
@@ -289,35 +279,28 @@ func decompressBuffer(c *compress) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-// joinHostPort returns the host:port form of an address, for use with a
-// transport.
+// joinHostPort host:port
 func joinHostPort(host string, port uint16) string {
 	return net.JoinHostPort(host, strconv.Itoa(int(port)))
 }
 
-// hasPort is given a string of the form "host", "host:port", "ipv6::address",
-// or "[ipv6::address]:port", and returns true if the string includes a port.
+// hasPort "host", "host:port", "ipv6::address",or "[ipv6::address]:port"
+// 是否包含端口
 func hasPort(s string) bool {
-	// IPv6 address in brackets.
+	// IPv6 地址
 	if strings.LastIndex(s, "[") == 0 {
 		return strings.LastIndex(s, ":") > strings.LastIndex(s, "]")
 	}
-
-	// Otherwise the presence of a single colon determines if there's a port
-	// since IPv6 addresses outside of brackets (count > 1) can't have a
-	// port.
+	//是否包含：
 	return strings.Count(s, ":") == 1
 }
 
-// ensurePort makes sure the given string has a port number on it, otherwise it
-// appends the given port as a default.
+// ensurePort 确保给定了一个端口,如果没有设置，就使用默认的端口
 func ensurePort(s string, port int) string {
 	if hasPort(s) {
 		return s
 	}
-
-	// If this is an IPv6 address, the join call will add another set of
-	// brackets, so we have to trim before we add the default port.
+	// 如果是IPV6地址
 	s = strings.Trim(s, "[]")
 	s = net.JoinHostPort(s, strconv.Itoa(port))
 	return s

@@ -143,12 +143,11 @@ type dead struct {
 	From        string // Include who is suspecting
 }
 
-// pushPullHeader is used to inform the
-// otherside how many states we are transferring
+// pushPullHeader 用来通知对方我们要转移多少个state
 type pushPullHeader struct {
-	Nodes        int
-	UserStateLen int  // Encodes the byte lengh of user state
-	Join         bool // Is this a join request or a anti-entropy run
+	Nodes        int  // 节点数量
+	UserStateLen int  // 节点状态数据长度
+	Join         bool // 是否加入集群
 }
 
 // userMsgHeader is used to encapsulate a userMsg
@@ -156,8 +155,7 @@ type userMsgHeader struct {
 	UserMsgLen int // Encodes the byte lengh of user state
 }
 
-// pushNodeState is used for pushPullReq when we are
-// transferring out node states
+// pushNodeState pushPullReq 传输本地的节点状态
 type pushNodeState struct {
 	Name        string
 	Addr        []byte
@@ -165,7 +163,7 @@ type pushNodeState struct {
 	Meta        []byte
 	Incarnation uint32
 	State       NodeStateType
-	Vsn         []uint8 // 协议版本s
+	Vsn         []uint8 // 协议版本
 }
 
 // compress is used to wrap an underlying payload
@@ -182,7 +180,7 @@ type msgHandoff struct {
 	from    net.Addr
 }
 
-// encryptionVersion returns the encryption version to use
+// encryptionVersion 返回加密版本
 func (m *Members) encryptionVersion() encryptionVersion {
 	switch m.ProtocolVersion() {
 	case 1:
@@ -192,7 +190,7 @@ func (m *Members) encryptionVersion() encryptionVersion {
 	}
 }
 
-// streamListen pull模式, 处理来自其他节点的数据
+// streamListen pull、push 模式, 处理来自其他节点的数据
 func (m *Members) streamListen() {
 	for {
 		select {
@@ -204,7 +202,7 @@ func (m *Members) streamListen() {
 	}
 }
 
-// handleConn 处理pull模式下的流链接
+// handleConn 处理pull、push模式下的流链接
 func (m *Members) handleConn(conn net.Conn) {
 	defer conn.Close()
 	m.logger.Printf("[DEBUG] memberlist: 流连接 %s", LogConn(conn))
@@ -791,7 +789,7 @@ func (m *Members) rawSendMsgPacket(a Address, node *Node, msg []byte) error {
 		if err != nil {
 			m.logger.Printf("[WARN] memberlist: Failed to compress payload: %v", err)
 		} else {
-			// Only use compression if it reduced the size
+			// 只有在压缩变小后，才使用压缩
 			if buf.Len() < len(msg) {
 				msg = buf.Bytes()
 			}
@@ -844,24 +842,23 @@ func (m *Members) rawSendMsgPacket(a Address, node *Node, msg []byte) error {
 	return err
 }
 
-// rawSendMsgStream is used to stream a message to another host without
-// modification, other than applying compression and encryption if enabled.
+// rawSendMsgStream 是用来将一个信息流传到另一个主机上，不作任何修改
 func (m *Members) rawSendMsgStream(conn net.Conn, sendBuf []byte, streamLabel string) error {
-	// Check if compression is enabled
+	// 是否允许压缩
 	if m.config.EnableCompression {
 		compBuf, err := compressPayload(sendBuf)
 		if err != nil {
-			m.logger.Printf("[ERROR] memberlist: Failed to compress payload: %v", err)
+			m.logger.Printf("[ERROR] memberlist: 压缩失败: %v", err)
 		} else {
 			sendBuf = compBuf.Bytes()
 		}
 	}
 
-	// Check if encryption is enabled
+	// 是否允许加密
 	if m.config.EncryptionEnabled() && m.config.GossipVerifyOutgoing {
 		crypt, err := m.encryptLocalState(sendBuf, streamLabel)
 		if err != nil {
-			m.logger.Printf("[ERROR] memberlist: Failed to encrypt local state: %v", err)
+			m.logger.Printf("[ERROR] memberlist: 加密失败: %v", err)
 			return err
 		}
 		sendBuf = crypt
@@ -906,22 +903,20 @@ func (m *Members) sendUserMsg(a Address, sendBuf []byte) error {
 	return m.rawSendMsgStream(conn, bufConn.Bytes(), m.config.Label)
 }
 
-// sendAndReceiveState is used to initiate a push/pull over a stream with a
-// remote host.
+// OK 发送本机数据、接收远端数据
 func (m *Members) sendAndReceiveState(a Address, join bool) ([]pushNodeState, []byte, error) {
 	if a.Name == "" && m.config.RequireNodeNames {
 		return nil, nil, errNodeNamesAreRequired
 	}
-
-	// Attempt to connect
 	conn, err := m.transport.DialAddressTimeout(a, m.config.TCPTimeout)
+
 	if err != nil {
 		return nil, nil, err
 	}
 	defer conn.Close()
-	m.logger.Printf("[DEBUG] memberlist: Initiating push/pull sync with: %s %s", a.Name, conn.RemoteAddr())
+	m.logger.Printf("[DEBUG] memberlist: 初始化 push/pull 同步和: %s %s", a.Name, conn.RemoteAddr())
 
-	// Send our state
+	// 发送自身状态,发送数据本身也设置了TCPTimeout
 	if err := m.sendLocalState(conn, join, m.config.Label); err != nil {
 		return nil, nil, err
 	}
@@ -951,12 +946,11 @@ func (m *Members) sendAndReceiveState(a Address, join bool) ([]pushNodeState, []
 	return remoteNodes, userState, err
 }
 
-// sendLocalState is invoked to send our local state over a stream connection.
+// sendLocalState 发送本地状态
 func (m *Members) sendLocalState(conn net.Conn, join bool, streamLabel string) error {
-	// Setup a deadline
+	// 设置超时时间
 	conn.SetDeadline(time.Now().Add(m.config.TCPTimeout))
 
-	// Prepare the local node state
 	m.nodeLock.RLock()
 	localNodes := make([]pushNodeState, len(m.nodes))
 	for idx, n := range m.nodes {
@@ -973,25 +967,22 @@ func (m *Members) sendLocalState(conn net.Conn, join bool, streamLabel string) e
 	}
 	m.nodeLock.RUnlock()
 
-	// Get the delegate state
+	// 获取委托的状态
 	var userData []byte
 	if m.config.Delegate != nil {
 		userData = m.config.Delegate.LocalState(join)
 	}
 
-	// Create a bytes buffer writer
 	bufConn := bytes.NewBuffer(nil)
 
-	// Send our node state
 	header := pushPullHeader{Nodes: len(localNodes), UserStateLen: len(userData), Join: join}
 	hd := codec.MsgpackHandle{}
 	enc := codec.NewEncoder(bufConn, &hd)
 
-	// Begin state push
 	if _, err := bufConn.Write([]byte{byte(pushPullMsg)}); err != nil {
 		return err
 	}
-
+	// 消息类型【长度固定】、消息头【长度固定】、每个节点的信息、节点数据
 	if err := enc.Encode(&header); err != nil {
 		return err
 	}
@@ -1001,110 +992,29 @@ func (m *Members) sendLocalState(conn net.Conn, join bool, streamLabel string) e
 		}
 	}
 
-	// Write the user state as well
 	if userData != nil {
 		if _, err := bufConn.Write(userData); err != nil {
 			return err
 		}
 	}
 
-	// Get the send buffer
-	return m.rawSendMsgStream(conn, bufConn.Bytes(), streamLabel)
+	return m.rawSendMsgStream(conn, bufConn.Bytes(), streamLabel) // m.config.Label
 }
 
-// encryptLocalState is used to help encrypt local state before sending
-func (m *Members) encryptLocalState(sendBuf []byte, streamLabel string) ([]byte, error) {
-	var buf bytes.Buffer
-
-	// Write the encryptMsg byte
-	buf.WriteByte(byte(encryptMsg))
-
-	// Write the size of the message
-	sizeBuf := make([]byte, 4)
-	encVsn := m.encryptionVersion()
-	encLen := encryptedLength(encVsn, len(sendBuf))
-	binary.BigEndian.PutUint32(sizeBuf, uint32(encLen))
-	buf.Write(sizeBuf)
-
-	// Authenticated Data is:
-	//
-	//   [messageType; byte] [messageLength; uint32] [stream_label; optional]
-	//
-	dataBytes := appendBytes(buf.Bytes()[:5], []byte(streamLabel))
-
-	// Write the encrypted cipher text to the buffer
-	key := m.config.Keyring.GetPrimaryKey()
-	err := encryptPayload(encVsn, key, sendBuf, dataBytes, &buf)
-	if err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
-}
-
-// decryptRemoteState is used to help decrypt the remote state
-func (m *Members) decryptRemoteState(bufConn io.Reader, streamLabel string) ([]byte, error) {
-	// Read in enough to determine message length
-	cipherText := bytes.NewBuffer(nil)
-	cipherText.WriteByte(byte(encryptMsg))
-	_, err := io.CopyN(cipherText, bufConn, 4)
-	if err != nil {
-		return nil, err
-	}
-
-	// Ensure we aren't asked to download too much. This is to guard against
-	// an attack vector where a huge amount of state is sent
-	moreBytes := binary.BigEndian.Uint32(cipherText.Bytes()[1:5])
-	if moreBytes > maxPushStateBytes {
-		return nil, fmt.Errorf("Remote node state is larger than limit (%d)", moreBytes)
-
-	}
-
-	//Start reporting the size before you cross the limit
-	if moreBytes > uint32(math.Floor(.6*maxPushStateBytes)) {
-		m.logger.Printf("[WARN] memberlist: Remote node state size is (%d) limit is (%d)", moreBytes, maxPushStateBytes)
-	}
-
-	// Read in the rest of the payload
-	_, err = io.CopyN(cipherText, bufConn, int64(moreBytes))
-	if err != nil {
-		return nil, err
-	}
-
-	// Decrypt the cipherText with some authenticated data
-	//
-	// Authenticated Data is:
-	//
-	//   [messageType; byte] [messageLength; uint32] [label_data; optional]
-	//
-	dataBytes := appendBytes(cipherText.Bytes()[:5], []byte(streamLabel))
-	cipherBytes := cipherText.Bytes()[5:]
-
-	// Decrypt the payload
-	keys := m.config.Keyring.GetKeys()
-	return decryptPayload(keys, cipherBytes, dataBytes)
-}
-
-// readStream is used to read messages from a stream connection, decrypting and
-// decompressing the stream if necessary.
-//
-// The provided streamLabel if present will be authenticated during decryption
-// of each message.
+// readStream 解密、解压缩消息
 func (m *Members) readStream(conn net.Conn, streamLabel string) (messageType, io.Reader, *codec.Decoder, error) {
-	// Created a buffered reader
 	var bufConn io.Reader = bufio.NewReader(conn)
 
-	// Read the message type
+	// 消息类型     encryptMsg
 	buf := [1]byte{0}
 	if _, err := io.ReadFull(bufConn, buf[:]); err != nil {
 		return 0, nil, nil, err
 	}
-	msgType := messageType(buf[0])
+	msgType := messageType(buf[0]) // encryptMsg
 
-	// Check if the message is encrypted
 	if msgType == encryptMsg {
 		if !m.config.EncryptionEnabled() {
-			return 0, nil, nil,
-				fmt.Errorf("Remote state is encrypted and encryption is not configured")
+			return 0, nil, nil, fmt.Errorf("远端状态是加密的，但本机加密信息没有配置")
 		}
 
 		plain, err := m.decryptRemoteState(bufConn, streamLabel)
@@ -1112,19 +1022,15 @@ func (m *Members) readStream(conn net.Conn, streamLabel string) (messageType, io
 			return 0, nil, nil, err
 		}
 
-		// Reset message type and bufConn
 		msgType = messageType(plain[0])
 		bufConn = bytes.NewReader(plain[1:])
 	} else if m.config.EncryptionEnabled() && m.config.GossipVerifyIncoming {
-		return 0, nil, nil,
-			fmt.Errorf("Encryption is configured but remote state is not encrypted")
+		return 0, nil, nil, fmt.Errorf("加密信息已配置,但远程的state没有加密")
 	}
 
-	// Get the msgPack decoders
 	hd := codec.MsgpackHandle{}
 	dec := codec.NewDecoder(bufConn, &hd)
 
-	// Check if we have a compressed message
 	if msgType == compressMsg {
 		var c compress
 		if err := dec.Decode(&c); err != nil {
@@ -1135,13 +1041,8 @@ func (m *Members) readStream(conn net.Conn, streamLabel string) (messageType, io
 			return 0, nil, nil, err
 		}
 
-		// Reset the message type
 		msgType = messageType(decomp[0])
-
-		// Create a new bufConn
 		bufConn = bytes.NewReader(decomp[1:])
-
-		// Create a new decoder
 		dec = codec.NewDecoder(bufConn, &hd)
 	}
 
@@ -1310,4 +1211,72 @@ func (m *Members) sendPingAndWaitForAck(a Address, ping ping, deadline time.Time
 	}
 
 	return true, nil
+}
+
+// ------------------------------------------ TODO ---------------------------------------
+
+// encryptLocalState 在发送前 加密数据
+func (m *Members) encryptLocalState(sendBuf []byte, streamLabel string) ([]byte, error) {
+	var buf bytes.Buffer
+	buf.WriteByte(byte(encryptMsg))
+
+	sizeBuf := make([]byte, 4)
+	encVsn := m.encryptionVersion()
+	encLen := encryptedLength(encVsn, len(sendBuf))
+	binary.BigEndian.PutUint32(sizeBuf, uint32(encLen))
+	buf.Write(sizeBuf)
+	// Authenticated Data is:
+	//   [messageType; byte] [messageLength; uint32] [stream_label; optional]
+	//
+	dataBytes := appendBytes(buf.Bytes()[:5], []byte(streamLabel))
+
+	key := m.config.Keyring.GetPrimaryKey()
+	err := encryptPayload(encVsn, key, sendBuf, dataBytes, &buf)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// decryptRemoteState 解密state
+func (m *Members) decryptRemoteState(bufConn io.Reader, streamLabel string) ([]byte, error) {
+	// Read in enough to determine message length
+	cipherText := bytes.NewBuffer(nil)
+	cipherText.WriteByte(byte(encryptMsg))
+	_, err := io.CopyN(cipherText, bufConn, 4)
+	if err != nil {
+		return nil, err
+	}
+
+	// Ensure we aren't asked to download too much. This is to guard against
+	// an attack vector where a huge amount of state is sent
+	moreBytes := binary.BigEndian.Uint32(cipherText.Bytes()[1:5])
+	if moreBytes > maxPushStateBytes {
+		return nil, fmt.Errorf("Remote node state is larger than limit (%d)", moreBytes)
+
+	}
+
+	//Start reporting the size before you cross the limit
+	if moreBytes > uint32(math.Floor(.6*maxPushStateBytes)) {
+		m.logger.Printf("[WARN] memberlist: Remote node state size is (%d) limit is (%d)", moreBytes, maxPushStateBytes)
+	}
+
+	// Read in the rest of the payload
+	_, err = io.CopyN(cipherText, bufConn, int64(moreBytes))
+	if err != nil {
+		return nil, err
+	}
+
+	// Decrypt the cipherText with some authenticated data
+	//
+	// Authenticated Data is:
+	//
+	//   [messageType; byte] [messageLength; uint32] [label_data; optional]
+	//
+	dataBytes := appendBytes(cipherText.Bytes()[:5], []byte(streamLabel))
+	cipherBytes := cipherText.Bytes()[5:]
+
+	// Decrypt the payload
+	keys := m.config.Keyring.GetKeys()
+	return decryptPayload(keys, cipherBytes, dataBytes)
 }

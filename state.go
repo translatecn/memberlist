@@ -621,10 +621,9 @@ func (m *Members) pushPull() {
 	}
 }
 
-// pushPullNode does a complete state exchange with a specific node.
+// pushPullNode 与一个特定的节点进行完整的状态交换。
 func (m *Members) pushPullNode(a Address, join bool) error {
 
-	// Attempt to send and receive with the node
 	remote, userState, err := m.sendAndReceiveState(a, join)
 	if err != nil {
 		return err

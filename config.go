@@ -97,7 +97,7 @@ type Config struct {
 
 	// 控制是否对gossip进行加密。它用于在运行的集群上从未加密的gossip转移到加密的gossip。
 	GossipVerifyIncoming bool
-	GossipVerifyOutgoing bool
+	GossipVerifyOutgoing bool // 校验出流量; 用于出去的数据加密
 
 	// 是否启用消息压缩
 	EnableCompression bool
@@ -109,13 +109,13 @@ type Config struct {
 	Keyring *Keyring
 
 	// Delegate和Events是通过回调机制接收和提供数据给memberlist的。
-	Delegate                Delegate // 委托
 	DelegateProtocolVersion uint8
 	DelegateProtocolMin     uint8
 	DelegateProtocolMax     uint8
 	Events                  EventDelegate
 
-	// 以下四个都没有初始化
+	// 以下五个都没有初始化
+	Delegate                Delegate // 委托
 	Conflict ConflictDelegate // 配置 委托/实现
 	Merge    MergeDelegate    // 合并 委托/实现
 	Ping     PingDelegate     // ping 委托/实现
@@ -138,7 +138,7 @@ type Config struct {
 	DeadNodeReclaimTime time.Duration
 
 	// RequireNodeNames 控制在发送一个消息到节点时,是否需要节点的名称。
-	RequireNodeNames bool
+	RequireNodeNames bool // 默认不需要
 
 	// CIDRsAllowed nil,允许所有链接,[]拒绝所有链接
 	CIDRsAllowed []net.IPNet

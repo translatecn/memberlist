@@ -56,7 +56,6 @@ type Transport interface {
 type Address struct {
 	//网络地址   ip:port
 	Addr string
-
 	// 该地址的名字,可选
 	Name string
 }

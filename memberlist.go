@@ -243,24 +243,27 @@ func Create(conf *Config) (*Members, error) {
 // This returns the number of hosts successfully contacted and an error if
 // none could be reached. If an error is returned, the node did not successfully
 // join the cluster.
-
+// 加入（Join）是用来获取一个现有的成员，并试图通过联系所有给定的主机和执行状态同步来加入一个集群。
+// 最初，成员只包含我们自己的状态，所以这样做将导致远程节点意识到这个节点的存在，有效地加入集群。
+// 这将返回成功联系到的主机的数量，如果没有联系到，则返回错误。如果返回错误，说明该节点没有成功加入集群。
 func (m *Members) Join(existing []string) (int, error) {
 	numSuccess := 0
 	var errs error
 	for _, exist := range existing {
 		addrs, err := m.resolveAddr(exist)
 		if err != nil {
-			err = fmt.Errorf("Failed to resolve %s: %v", exist, err)
+			err = fmt.Errorf("解析地址失败 %s: %v", exist, err)
 			errs = multierror.Append(errs, err)
 			m.logger.Printf("[WARN] memberlist: %v", err)
 			continue
 		}
 
 		for _, addr := range addrs {
+			var _ = ipPort{}
 			hp := joinHostPort(addr.ip.String(), addr.port)
 			a := Address{Addr: hp, Name: addr.nodeName}
 			if err := m.pushPullNode(a, true); err != nil {
-				err = fmt.Errorf("Failed to join %s: %v", a.Addr, err)
+				err = fmt.Errorf("加入失败 %s: %v", a.Addr, err)
 				errs = multierror.Append(errs, err)
 				m.logger.Printf("[DEBUG] memberlist: %v", err)
 				continue
@@ -275,19 +278,16 @@ func (m *Members) Join(existing []string) (int, error) {
 	return numSuccess, errs
 }
 
-// ipPort holds information about a node we want to try to join.
+// ipPort 希望加入的节点信息
 type ipPort struct {
 	ip       net.IP
 	port     uint16
 	nodeName string // optional
 }
 
-// tcpLookupIP is a helper to initiate a TCP-based DNS lookup for the given host.
-// The built-in Go resolver will do a UDP lookup first, and will only use TCP if
-// the response has the truncate bit set, which isn't common on DNS servers like
-// Consul's. By doing the TCP lookup directly, we get the best chance for the
-// largest list of hosts to join. Since joins are relatively rare events, it's ok
-// to do this rather expensive operation.
+// tcpLookupIP 是一个辅助工具，用于启动对指定主机的基于TCP的DNS查询。
+// 内置的Go解析器将首先进行UDP查询，只有在响应设置了truncate bit时才会使用TCP，这在像Consul的DNS服务器上并不常见。
+// 通过直接进行TCP查询，我们得到了最大的主机列表加入的最佳机会。由于加入是相对罕见的事件，所以做这个相当昂贵的操作是可以的。
 func (m *Members) tcpLookupIP(host string, defaultPort uint16, nodeName string) ([]ipPort, error) {
 	// Don't attempt any TCP lookups against non-fully qualified domain
 	// names, since those will likely come from the resolv.conf file.
@@ -329,11 +329,11 @@ func (m *Members) tcpLookupIP(host string, defaultPort uint16, nodeName string) 
 		var ips []ipPort
 		for _, r := range in.Answer {
 			switch rr := r.(type) {
-			case (*dns.A):
+			case *dns.A:
 				ips = append(ips, ipPort{ip: rr.A, port: defaultPort, nodeName: nodeName})
-			case (*dns.AAAA):
+			case *dns.AAAA:
 				ips = append(ips, ipPort{ip: rr.AAAA, port: defaultPort, nodeName: nodeName})
-			case (*dns.CNAME):
+			case *dns.CNAME:
 				m.logger.Printf("[DEBUG] memberlist: Ignoring CNAME RR in TCP-first answer for '%s'", host)
 			}
 		}
@@ -346,9 +346,10 @@ func (m *Members) tcpLookupIP(host string, defaultPort uint16, nodeName string) 
 // resolveAddr is used to resolve the address into an address,
 // port, and error. If no port is given, use the default
 func (m *Members) resolveAddr(hostStr string) ([]ipPort, error) {
-	// First peel off any leading node name. This is optional.
+	// 首先去掉任何leading节点名称。这是可选的。
 	nodeName := ""
-	if slashIdx := strings.Index(hostStr, "/"); slashIdx >= 0 {
+	slashIdx := strings.Index(hostStr, "/") // 127.0.0.1:8000       -1
+	if slashIdx >= 0 {
 		if slashIdx == 0 {
 			return nil, fmt.Errorf("empty node name provided")
 		}
@@ -356,8 +357,8 @@ func (m *Members) resolveAddr(hostStr string) ([]ipPort, error) {
 		hostStr = hostStr[slashIdx+1:]
 	}
 
-	// This captures the supplied port, or the default one.
-	hostStr = ensurePort(hostStr, m.config.BindPort)
+	// 这将捕获所提供的端口，或默认的端口。
+	hostStr = ensurePort(hostStr, m.config.BindPort) // 8000
 	host, sport, err := net.SplitHostPort(hostStr)
 	if err != nil {
 		return nil, err
@@ -368,29 +369,21 @@ func (m *Members) resolveAddr(hostStr string) ([]ipPort, error) {
 	}
 	port := uint16(lport)
 
-	// If it looks like an IP address we are done. The SplitHostPort() above
-	// will make sure the host part is in good shape for parsing, even for
-	// IPv6 addresses.
 	if ip := net.ParseIP(host); ip != nil {
 		return []ipPort{
 			ipPort{ip: ip, port: port, nodeName: nodeName},
 		}, nil
 	}
-
-	// First try TCP so we have the best chance for the largest list of
-	// hosts to join. If this fails it's not fatal since this isn't a standard
-	// way to query DNS, and we have a fallback below.
+	// 尝试使用tcp 解析
 	ips, err := m.tcpLookupIP(host, port, nodeName)
 	if err != nil {
-		m.logger.Printf("[DEBUG] memberlist: TCP-first lookup failed for '%s', falling back to UDP: %s", hostStr, err)
+		m.logger.Printf("[DEBUG] memberlist: TCP-first lookup 失败'%s', falling back to UDP: %s", hostStr, err)
 	}
 	if len(ips) > 0 {
 		return ips, nil
 	}
 
-	// If TCP didn't yield anything then use the normal Go resolver which
-	// will try UDP, then might possibly try TCP again if the UDP response
-	// indicates it was truncated.
+	// 尝试使用udp 解析
 	ans, err := net.LookupIP(host)
 	if err != nil {
 		return nil, err
@@ -473,61 +466,6 @@ func (m *Members) refreshAdvertise() (net.IP, int, error) {
 	return addr, port, nil
 }
 
-// LocalNode is used to return the local Node
-func (m *Members) LocalNode() *Node {
-	m.nodeLock.RLock()
-	defer m.nodeLock.RUnlock()
-	state := m.nodeMap[m.config.Name]
-	return &state.Node
-}
-
-// UpdateNode is used to trigger re-advertising the local node. This is
-// primarily used with a Delegate to support dynamic updates to the local
-// meta data.  This will block until the update message is successfully
-// broadcasted to a member of the cluster, if any exist or until a specified
-// timeout is reached.
-func (m *Members) UpdateNode(timeout time.Duration) error {
-	// Get the node meta data
-	var meta []byte
-	if m.config.Delegate != nil {
-		meta = m.config.Delegate.NodeMeta(MetaMaxSize)
-		if len(meta) > MetaMaxSize {
-			panic("Node meta data provided is longer than the limit")
-		}
-	}
-
-	// Get the existing node
-	m.nodeLock.RLock()
-	state := m.nodeMap[m.config.Name]
-	m.nodeLock.RUnlock()
-
-	// Format a new alive message
-	a := alive{
-		Incarnation: m.nextIncarnation(),
-		Node:        m.config.Name,
-		Addr:        state.Addr,
-		Port:        state.Port,
-		Meta:        meta,
-		Vsn:         m.config.BuildVsnArray(),
-	}
-	notifyCh := make(chan struct{})
-	m.aliveNode(&a, notifyCh, true)
-
-	// Wait for the broadcast or a timeout
-	if m.anyAlive() {
-		var timeoutCh <-chan time.Time
-		if timeout > 0 {
-			timeoutCh = time.After(timeout)
-		}
-		select {
-		case <-notifyCh:
-		case <-timeoutCh:
-			return fmt.Errorf("timeout waiting for update broadcast")
-		}
-	}
-	return nil
-}
-
 // Deprecated: SendTo is deprecated in favor of SendBestEffort, which requires a node to
 // target. If you don't have a node then use SendToAddress.
 func (m *Members) SendTo(to net.Addr, msg []byte) error {
@@ -576,21 +514,6 @@ func (m *Members) SendBestEffort(to *Node, msg []byte) error {
 // limit on the size of the message.
 func (m *Members) SendReliable(to *Node, msg []byte) error {
 	return m.sendUserMsg(to.FullAddress(), msg)
-}
-
-// Members returns 返回已知的存活节点,返回的结构体不能被修改。
-func (m *Members) Members() []*Node {
-	m.nodeLock.RLock()
-	defer m.nodeLock.RUnlock()
-
-	nodes := make([]*Node, 0, len(m.nodes))
-	for _, n := range m.nodes {
-		if !n.DeadOrLeft() {
-			nodes = append(nodes, &n.Node)
-		}
-	}
-
-	return nodes
 }
 
 // NumMembers returns the number of alive nodes currently known. Between
@@ -686,12 +609,8 @@ func (m *Members) GetHealthScore() int {
 	return m.awareness.GetHealthScore()
 }
 
-// ProtocolVersion returns the 协议版本 currently in use by
-// this memberlist.
+// ProtocolVersion 返回当前的协议版本
 func (m *Members) ProtocolVersion() uint8 {
-	// NOTE: This method exists so that in the future we can control
-	// any locking if necessary, if we change the 协议版本 at
-	// runtime, etc.
 	return m.config.ProtocolVersion
 }
 
@@ -720,28 +639,4 @@ func (m *Members) hasShutdown() bool {
 
 func (m *Members) hasLeft() bool {
 	return atomic.LoadInt32(&m.leave) == 1
-}
-
-func (m *Members) getNodeState(addr string) NodeStateType {
-	m.nodeLock.RLock()
-	defer m.nodeLock.RUnlock()
-
-	n := m.nodeMap[addr]
-	return n.State
-}
-
-func (m *Members) getNodeStateChange(addr string) time.Time {
-	m.nodeLock.RLock()
-	defer m.nodeLock.RUnlock()
-
-	n := m.nodeMap[addr]
-	return n.StateChange
-}
-
-func (m *Members) changeNode(addr string, f func(*nodeState)) {
-	m.nodeLock.Lock()
-	defer m.nodeLock.Unlock()
-
-	n := m.nodeMap[addr]
-	f(n)
 }

@@ -67,15 +67,12 @@ func encryptOverhead(vsn encryptionVersion) int {
 	}
 }
 
-// encryptedLength is used to compute the buffer size needed
-// for a message of given length
+// encryptedLength // 计算缓冲区大小 			加密版本、消息体长度
 func encryptedLength(vsn encryptionVersion, inp int) int {
-	// If we are on version 1, there is no padding
+	// 当前是2
 	if vsn >= 1 {
 		return versionSize + nonceSize + inp + tagSize
 	}
-
-	// Determine the padding size
 	padding := blockSize - (inp % blockSize)
 
 	// Sum the extra parts to get total size
