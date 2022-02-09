@@ -15,46 +15,25 @@ import (
 	"github.com/hashicorp/go-msgpack/codec"
 )
 
-// This is the minimum and maximum 协议版本 that we can
-// _understand_. We're allowed to speak at any version within this
-// range. This range is inclusive.
 const (
-	ProtocolVersionMin uint8 = 1
-
-	// Version 3 added support for TCP pings but we kept the default
-	// 协议版本 at 2 to ease transition to this new feature.
-	// A memberlist speaking version 2 of the protocol will attempt
-	// to TCP ping another memberlist who understands version 3 or
-	// greater.
-	//
-	// Version 4 added support for nacks as part of indirect probes.
-	// A memberlist speaking version 2 of the protocol will expect
-	// nacks from another memberlist who understands version 4 or
-	// greater, and likewise nacks will be sent to memberlists who
-	// understand version 4 or greater.
-	ProtocolVersion2Compatible = 2
-
-	ProtocolVersionMax = 5
+	ProtocolVersionMin         uint8 = 1 // 协议版本
+	ProtocolVersion2Compatible       = 2
+	ProtocolVersionMax               = 5
 )
 
-// messageType is an integer ID of a type of message that can be received
-// on network channels from other members.
+// messageType 一个字节的大小，消息类型
 type messageType uint8
 
-// The list of available message types.
-//
-// WARNING: ONLY APPEND TO THIS LIST! The numeric values are part of the
-// protocol itself.
 const (
 	pingMsg messageType = iota
 	indirectPingMsg
 	ackRespMsg
-	suspectMsg
-	aliveMsg
-	deadMsg
+	suspectMsg // 怀疑消息
+	aliveMsg   // 探活消息
+	deadMsg    // 死亡消息
 	pushPullMsg
 	compoundMsg
-	userMsg // User mesg, not handled by us
+	userMsg // 用户消息、不处理
 	compressMsg
 	encryptMsg
 	nackRespMsg
@@ -77,13 +56,13 @@ const (
 )
 
 const (
-	MetaMaxSize            = 512 // Maximum size for node meta data
-	compoundHeaderOverhead = 2   // Assumed header overhead
-	compoundOverhead       = 2   // Assumed overhead per entry in compoundHeader
+	MetaMaxSize            = 512 // 节点元数据最大的大小
+	compoundHeaderOverhead = 2   // 假定header开销
+	compoundOverhead       = 2   // 假定在compoundHeader中每个条目的开销
 	userMsgOverhead        = 1
-	blockingWarning        = 10 * time.Millisecond // Warn if a UDP packet takes this long to process
+	blockingWarning        = 10 * time.Millisecond // 如果UDP数据包需要这么长的时间来处理，则发出警告
 	maxPushStateBytes      = 20 * 1024 * 1024
-	maxPushPullRequests    = 128 // Maximum number of concurrent push/pull requests
+	maxPushPullRequests    = 128 // 最大并发推/拉请求数
 )
 
 // ping request sent directly to node
@@ -143,8 +122,7 @@ type suspect struct {
 	From        string // Include who is suspecting
 }
 
-// alive is broadcast when we know a node is alive.
-// Overloaded for nodes joining
+// alive 是在我们知道一个节点是活的时候 广播。 对加入的节点进行重载
 type alive struct {
 	Incarnation uint32
 	Node        string
@@ -152,7 +130,7 @@ type alive struct {
 	Port        uint16
 	Meta        []byte
 
-	// The versions of the protocol/delegate that are being spoken, order:
+	// protocol/delegate个版本、按照如下排序
 	// pmin, pmax, pcur, dmin, dmax, dcur
 	Vsn []uint8
 }
@@ -197,7 +175,7 @@ type compress struct {
 	Buf  []byte
 }
 
-// msgHandoff is used to transfer a message between goroutines
+// msgHandoff 用于在goroutine之间消息传递
 type msgHandoff struct {
 	msgType messageType
 	buf     []byte
@@ -239,13 +217,13 @@ func (m *Members) handleConn(conn net.Conn) {
 	)
 	conn, streamLabel, err = RemoveLabelHeaderFromStream(conn)
 	if err != nil {
-		m.logger.Printf("[ERR] memberlist: failed to receive and remove the stream label header: %s %s", err, LogConn(conn))
+		m.logger.Printf("[错误] memberlist: failed to receive and remove the stream label header: %s %s", err, LogConn(conn))
 		return
 	}
 
 	if m.config.SkipInboundLabelCheck {
 		if streamLabel != "" {
-			m.logger.Printf("[ERR] memberlist: unexpected double stream label header: %s", LogConn(conn))
+			m.logger.Printf("[错误] memberlist: unexpected double stream label header: %s", LogConn(conn))
 			return
 		}
 		// Set this from config so that the auth data assertions work below.
@@ -253,25 +231,25 @@ func (m *Members) handleConn(conn net.Conn) {
 	}
 
 	if m.config.Label != streamLabel {
-		m.logger.Printf("[ERR] memberlist: discarding stream with unacceptable label %q: %s", streamLabel, LogConn(conn))
+		m.logger.Printf("[错误] memberlist: discarding stream with unacceptable label %q: %s", streamLabel, LogConn(conn))
 		return
 	}
 
 	msgType, bufConn, dec, err := m.readStream(conn, streamLabel)
 	if err != nil {
 		if err != io.EOF {
-			m.logger.Printf("[ERR] memberlist: failed to receive: %s %s", err, LogConn(conn))
+			m.logger.Printf("[错误] memberlist: failed to receive: %s %s", err, LogConn(conn))
 
 			resp := errResp{err.Error()}
 			out, err := encode(errMsg, &resp)
 			if err != nil {
-				m.logger.Printf("[ERR] memberlist: Failed to encode error response: %s", err)
+				m.logger.Printf("[错误] memberlist: Failed to encode error response: %s", err)
 				return
 			}
 
 			err = m.rawSendMsgStream(conn, out.Bytes(), streamLabel)
 			if err != nil {
-				m.logger.Printf("[ERR] memberlist: Failed to send error: %s %s", err, LogConn(conn))
+				m.logger.Printf("[错误] memberlist: Failed to send error: %s %s", err, LogConn(conn))
 				return
 			}
 		}
@@ -281,7 +259,7 @@ func (m *Members) handleConn(conn net.Conn) {
 	switch msgType {
 	case userMsg:
 		if err := m.readUserMsg(bufConn, dec); err != nil {
-			m.logger.Printf("[ERR] memberlist: Failed to receive user message: %s %s", err, LogConn(conn))
+			m.logger.Printf("[错误] memberlist: Failed to receive user message: %s %s", err, LogConn(conn))
 		}
 	case pushPullMsg:
 		// Increment counter of pending push/pulls
@@ -290,29 +268,29 @@ func (m *Members) handleConn(conn net.Conn) {
 
 		// Check if we have too many open push/pull requests
 		if numConcurrent >= maxPushPullRequests {
-			m.logger.Printf("[ERR] memberlist: Too many pending push/pull requests")
+			m.logger.Printf("[错误] memberlist: Too many pending push/pull requests")
 			return
 		}
 
 		join, remoteNodes, userState, err := m.readRemoteState(bufConn, dec)
 		if err != nil {
-			m.logger.Printf("[ERR] memberlist: Failed to read remote state: %s %s", err, LogConn(conn))
+			m.logger.Printf("[错误] memberlist: Failed to read remote state: %s %s", err, LogConn(conn))
 			return
 		}
 
 		if err := m.sendLocalState(conn, join, streamLabel); err != nil {
-			m.logger.Printf("[ERR] memberlist: Failed to push local state: %s %s", err, LogConn(conn))
+			m.logger.Printf("[错误] memberlist: Failed to push local state: %s %s", err, LogConn(conn))
 			return
 		}
 
 		if err := m.mergeRemoteState(join, remoteNodes, userState); err != nil {
-			m.logger.Printf("[ERR] memberlist: Failed push/pull merge: %s %s", err, LogConn(conn))
+			m.logger.Printf("[错误] memberlist: Failed push/pull merge: %s %s", err, LogConn(conn))
 			return
 		}
 	case pingMsg:
 		var p ping
 		if err := dec.Decode(&p); err != nil {
-			m.logger.Printf("[ERR] memberlist: Failed to decode ping: %s %s", err, LogConn(conn))
+			m.logger.Printf("[错误] memberlist: Failed to decode ping: %s %s", err, LogConn(conn))
 			return
 		}
 
@@ -324,26 +302,25 @@ func (m *Members) handleConn(conn net.Conn) {
 		ack := ackResp{p.SeqNo, nil}
 		out, err := encode(ackRespMsg, &ack)
 		if err != nil {
-			m.logger.Printf("[ERR] memberlist: Failed to encode ack: %s", err)
+			m.logger.Printf("[错误] memberlist: Failed to encode ack: %s", err)
 			return
 		}
 
 		err = m.rawSendMsgStream(conn, out.Bytes(), streamLabel)
 		if err != nil {
-			m.logger.Printf("[ERR] memberlist: Failed to send ack: %s %s", err, LogConn(conn))
+			m.logger.Printf("[错误] memberlist: Failed to send ack: %s %s", err, LogConn(conn))
 			return
 		}
 	default:
-		m.logger.Printf("[ERR] memberlist: Received invalid msgType (%d) %s", msgType, LogConn(conn))
+		m.logger.Printf("[错误] memberlist: Received invalid msgType (%d) %s", msgType, LogConn(conn))
 	}
 }
 
-// packetListen is a long running goroutine that pulls packets out of the
-// transport and hands them off for processing.
+// packetListen 将包从传输中取出，并处理
 func (m *Members) packetListen() {
 	for {
 		select {
-		case packet := <-m.transport.PacketCh():
+		case packet := <-m.transport.PacketCh(): // 直接消息传递; 读取来自其他节点的消息
 			m.ingestPacket(packet.Buf, packet.From, packet.Timestamp)
 
 		case <-m.shutdownCh:
@@ -352,20 +329,21 @@ func (m *Members) packetListen() {
 	}
 }
 
+// 接收包
 func (m *Members) ingestPacket(buf []byte, from net.Addr, timestamp time.Time) {
 	var (
 		packetLabel string
 		err         error
 	)
-	buf, packetLabel, err = RemoveLabelHeaderFromPacket(buf)
+	buf, packetLabel, err = RemoveLabelHeaderFromPacket(buf) // 移除标签头
 	if err != nil {
-		m.logger.Printf("[ERR] memberlist: %v %s", err, LogAddress(from))
+		m.logger.Printf("[错误] memberlist: %v %s", err, LogAddress(from))
 		return
 	}
 
 	if m.config.SkipInboundLabelCheck {
 		if packetLabel != "" {
-			m.logger.Printf("[ERR] memberlist: unexpected double packet label header: %s", LogAddress(from))
+			m.logger.Printf("[错误] memberlist: unexpected double packet label header: %s", LogAddress(from))
 			return
 		}
 		// Set this from config so that the auth data assertions work below.
@@ -373,7 +351,7 @@ func (m *Members) ingestPacket(buf []byte, from net.Addr, timestamp time.Time) {
 	}
 
 	if m.config.Label != packetLabel {
-		m.logger.Printf("[ERR] memberlist: discarding packet with unacceptable label %q: %s", packetLabel, LogAddress(from))
+		m.logger.Printf("[错误] memberlist: discarding packet with unacceptable label %q: %s", packetLabel, LogAddress(from))
 		return
 	}
 
@@ -387,7 +365,7 @@ func (m *Members) ingestPacket(buf []byte, from net.Addr, timestamp time.Time) {
 				// Treat the message as plaintext
 				plain = buf
 			} else {
-				m.logger.Printf("[ERR] memberlist: Decrypt packet failed: %v %s", err, LogAddress(from))
+				m.logger.Printf("[错误] memberlist: Decrypt packet failed: %v %s", err, LogAddress(from))
 				return
 			}
 		}
@@ -412,7 +390,7 @@ func (m *Members) ingestPacket(buf []byte, from net.Addr, timestamp time.Time) {
 
 func (m *Members) handleCommand(buf []byte, from net.Addr, timestamp time.Time) {
 	if len(buf) < 1 {
-		m.logger.Printf("[ERR] memberlist: missing message type byte %s", LogAddress(from))
+		m.logger.Printf("[错误] memberlist: missing message type byte %s", LogAddress(from))
 		return
 	}
 	// Decode the message type
@@ -464,11 +442,11 @@ func (m *Members) handleCommand(buf []byte, from net.Addr, timestamp time.Time) 
 		}
 
 	default:
-		m.logger.Printf("[ERR] memberlist: msg type (%d) not supported %s", msgType, LogAddress(from))
+		m.logger.Printf("[错误] memberlist: msg type (%d) not supported %s", msgType, LogAddress(from))
 	}
 }
 
-// getNextMessage returns the next message to process in priority order, using LIFO
+// getNextMessage 使用LIFO，按优先级顺序返回下一个要处理的消息
 func (m *Members) getNextMessage() (msgHandoff, bool) {
 	m.msgQueueLock.Lock()
 	defer m.msgQueueLock.Unlock()
@@ -485,15 +463,13 @@ func (m *Members) getNextMessage() (msgHandoff, bool) {
 	return msgHandoff{}, false
 }
 
-// packetHandler is a long running goroutine that processes messages received
-// over the packet interface, but is decoupled from the listener to avoid
-// blocking the listener which may cause ping/ack messages to be delayed.
+// packetHandler 从listener解耦出来,避免阻塞 ,导致ping\ack延迟
 func (m *Members) packetHandler() {
 	for {
 		select {
-		case <-m.handoffCh:
+		case <-m.handoffCh: // 用户消息ch,当收到userMsg时激活
 			for {
-				msg, ok := m.getNextMessage()
+				msg, ok := m.getNextMessage() // 从队列里拿,
 				if !ok {
 					break
 				}
@@ -511,7 +487,7 @@ func (m *Members) packetHandler() {
 				case userMsg:
 					m.handleUser(buf, from)
 				default:
-					m.logger.Printf("[ERR] memberlist: Message type (%d) not supported %s (packet handler)", msgType, LogAddress(from))
+					m.logger.Printf("[错误] memberlist: 消息类型不支持 (%d) 不支持 %s (packet handler)", msgType, LogAddress(from))
 				}
 			}
 
@@ -525,7 +501,7 @@ func (m *Members) handleCompound(buf []byte, from net.Addr, timestamp time.Time)
 	// Decode the parts
 	trunc, parts, err := decodeCompoundMessage(buf)
 	if err != nil {
-		m.logger.Printf("[ERR] memberlist: Failed to decode compound request: %s %s", err, LogAddress(from))
+		m.logger.Printf("[错误] memberlist: Failed to decode compound request: %s %s", err, LogAddress(from))
 		return
 	}
 
@@ -543,7 +519,7 @@ func (m *Members) handleCompound(buf []byte, from net.Addr, timestamp time.Time)
 func (m *Members) handlePing(buf []byte, from net.Addr) {
 	var p ping
 	if err := decode(buf, &p); err != nil {
-		m.logger.Printf("[ERR] memberlist: Failed to decode ping request: %s %s", err, LogAddress(from))
+		m.logger.Printf("[错误] memberlist: Failed to decode ping request: %s %s", err, LogAddress(from))
 		return
 	}
 	// If node is provided, verify that it is for us
@@ -569,14 +545,14 @@ func (m *Members) handlePing(buf []byte, from net.Addr) {
 		Name: p.SourceNode,
 	}
 	if err := m.encodeAndSendMsg(a, ackRespMsg, &ack); err != nil {
-		m.logger.Printf("[ERR] memberlist: Failed to send ack: %s %s", err, LogAddress(from))
+		m.logger.Printf("[错误] memberlist: Failed to send ack: %s %s", err, LogAddress(from))
 	}
 }
 
 func (m *Members) handleIndirectPing(buf []byte, from net.Addr) {
 	var ind indirectPingReq
 	if err := decode(buf, &ind); err != nil {
-		m.logger.Printf("[ERR] memberlist: Failed to decode indirect ping request: %s %s", err, LogAddress(from))
+		m.logger.Printf("[错误] memberlist: Failed to decode indirect ping request: %s %s", err, LogAddress(from))
 		return
 	}
 
@@ -620,7 +596,7 @@ func (m *Members) handleIndirectPing(buf []byte, from net.Addr) {
 			Name: ind.SourceNode,
 		}
 		if err := m.encodeAndSendMsg(a, ackRespMsg, &ack); err != nil {
-			m.logger.Printf("[ERR] memberlist: Failed to forward ack: %s %s", err, LogStringAddress(indAddr))
+			m.logger.Printf("[错误] memberlist: Failed to forward ack: %s %s", err, LogStringAddress(indAddr))
 		}
 	}
 	m.setAckHandler(localSeqNo, respHandler, m.config.ProbeTimeout)
@@ -632,7 +608,7 @@ func (m *Members) handleIndirectPing(buf []byte, from net.Addr) {
 		Name: ind.Node,
 	}
 	if err := m.encodeAndSendMsg(a, pingMsg, &ping); err != nil {
-		m.logger.Printf("[ERR] memberlist: Failed to send indirect ping: %s %s", err, LogStringAddress(indAddr))
+		m.logger.Printf("[错误] memberlist: Failed to send indirect ping: %s %s", err, LogStringAddress(indAddr))
 	}
 
 	// Setup a timer to fire off a nack if no ack is seen in time.
@@ -648,7 +624,7 @@ func (m *Members) handleIndirectPing(buf []byte, from net.Addr) {
 					Name: ind.SourceNode,
 				}
 				if err := m.encodeAndSendMsg(a, nackRespMsg, &nack); err != nil {
-					m.logger.Printf("[ERR] memberlist: Failed to send nack: %s %s", err, LogStringAddress(indAddr))
+					m.logger.Printf("[错误] memberlist: Failed to send nack: %s %s", err, LogStringAddress(indAddr))
 				}
 			}
 		}()
@@ -658,7 +634,7 @@ func (m *Members) handleIndirectPing(buf []byte, from net.Addr) {
 func (m *Members) handleAck(buf []byte, from net.Addr, timestamp time.Time) {
 	var ack ackResp
 	if err := decode(buf, &ack); err != nil {
-		m.logger.Printf("[ERR] memberlist: Failed to decode ack response: %s %s", err, LogAddress(from))
+		m.logger.Printf("[错误] memberlist: Failed to decode ack response: %s %s", err, LogAddress(from))
 		return
 	}
 	m.invokeAckHandler(ack, timestamp)
@@ -667,7 +643,7 @@ func (m *Members) handleAck(buf []byte, from net.Addr, timestamp time.Time) {
 func (m *Members) handleNack(buf []byte, from net.Addr) {
 	var nack nackResp
 	if err := decode(buf, &nack); err != nil {
-		m.logger.Printf("[ERR] memberlist: Failed to decode nack response: %s %s", err, LogAddress(from))
+		m.logger.Printf("[错误] memberlist: Failed to decode nack response: %s %s", err, LogAddress(from))
 		return
 	}
 	m.invokeNackHandler(nack)
@@ -676,7 +652,7 @@ func (m *Members) handleNack(buf []byte, from net.Addr) {
 func (m *Members) handleSuspect(buf []byte, from net.Addr) {
 	var sus suspect
 	if err := decode(buf, &sus); err != nil {
-		m.logger.Printf("[ERR] memberlist: Failed to decode suspect message: %s %s", err, LogAddress(from))
+		m.logger.Printf("[错误] memberlist: Failed to decode suspect message: %s %s", err, LogAddress(from))
 		return
 	}
 	m.suspectNode(&sus)
@@ -711,7 +687,7 @@ func (m *Members) handleAlive(buf []byte, from net.Addr) {
 	}
 	var live alive
 	if err := decode(buf, &live); err != nil {
-		m.logger.Printf("[ERR] memberlist: Failed to decode alive message: %s %s", err, LogAddress(from))
+		m.logger.Printf("[错误] memberlist: Failed to decode alive message: %s %s", err, LogAddress(from))
 		return
 	}
 	if m.config.IPMustBeChecked() {
@@ -736,7 +712,7 @@ func (m *Members) handleAlive(buf []byte, from net.Addr) {
 func (m *Members) handleDead(buf []byte, from net.Addr) {
 	var d dead
 	if err := decode(buf, &d); err != nil {
-		m.logger.Printf("[ERR] memberlist: Failed to decode dead message: %s %s", err, LogAddress(from))
+		m.logger.Printf("[错误] memberlist: Failed to decode dead message: %s %s", err, LogAddress(from))
 		return
 	}
 	m.deadNode(&d)
@@ -755,7 +731,7 @@ func (m *Members) handleCompressed(buf []byte, from net.Addr, timestamp time.Tim
 	// Try to decode the payload
 	payload, err := decompressPayload(buf)
 	if err != nil {
-		m.logger.Printf("[ERR] memberlist: Failed to decompress payload: %v %s", err, LogAddress(from))
+		m.logger.Printf("[错误] memberlist: Failed to decompress payload: %v %s", err, LogAddress(from))
 		return
 	}
 
@@ -827,7 +803,7 @@ func (m *Members) rawSendMsgPacket(a Address, node *Node, msg []byte) error {
 	if node == nil {
 		toAddr, _, err := net.SplitHostPort(a.Addr)
 		if err != nil {
-			m.logger.Printf("[ERR] memberlist: Failed to parse address %q: %v", a.Addr, err)
+			m.logger.Printf("[错误] memberlist: Failed to parse address %q: %v", a.Addr, err)
 			return err
 		}
 		m.nodeLock.RLock()
@@ -858,7 +834,7 @@ func (m *Members) rawSendMsgPacket(a Address, node *Node, msg []byte) error {
 		)
 		err := encryptPayload(m.encryptionVersion(), primaryKey, msg, packetLabel, &buf)
 		if err != nil {
-			m.logger.Printf("[ERR] memberlist: Encryption of message failed: %v", err)
+			m.logger.Printf("[错误] memberlist: Encryption of message failed: %v", err)
 			return err
 		}
 		msg = buf.Bytes()

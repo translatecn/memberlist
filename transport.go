@@ -41,9 +41,7 @@ type Transport interface {
 	// in the form of "host:port".
 	WriteTo(b []byte, addr string) (time.Time, error)
 
-	// PacketCh returns a channel that can be read to receive incoming
-	// packets from other peers. How this is set up for listening is left as
-	// an exercise for the concrete transport implementations.
+	// PacketCh 直接消息传递; 读取来自其他节点的消息
 	PacketCh() <-chan *Packet
 
 	// DialTimeout is used to create a connection that allows us to perform
@@ -53,7 +51,7 @@ type Transport interface {
 	// failed.
 	DialTimeout(addr string, timeout time.Duration) (net.Conn, error)
 
-	// StreamCh 返回一个通道，可以处理来自其他节点传入流连接。
+	// StreamCh pull模式、返回一个通道，可以处理来自其他节点传入流连接。
 	StreamCh() <-chan net.Conn
 
 	// Shutdown 停止、清理资源

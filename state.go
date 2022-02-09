@@ -96,46 +96,36 @@ func (f NoPingResponseError) Error() string {
 	return fmt.Sprintf("No response from node %s", f.node)
 }
 
-// Schedule is used to ensure the Tick is performed periodically. This
-// function is safe to call multiple times. If the memberlist is already
-// scheduled, then it won't do anything.
+// 开启定时器
 func (m *Members) schedule() {
 	m.tickerLock.Lock()
 	defer m.tickerLock.Unlock()
-
-	// If we already have tickers, then don't do anything, since we're
-	// scheduled
 	if len(m.tickers) > 0 {
 		return
 	}
 
-	// Create the stop tick channel, a blocking channel. We close this
-	// when we should stop the tickers.
 	stopCh := make(chan struct{})
 
-	// Create a new probeTicker
+	// 定时探活
 	if m.config.ProbeInterval > 0 {
 		t := time.NewTicker(m.config.ProbeInterval)
 		go m.triggerFunc(m.config.ProbeInterval, t.C, stopCh, m.probe)
 		m.tickers = append(m.tickers, t)
 	}
 
-	// Create a push pull ticker if needed
 	if m.config.PushPullInterval > 0 {
+		// 开始 push、pull 触发器
 		go m.pushPullTrigger(stopCh)
 	}
 
-	// Create a gossip ticker if needed
+	// gossip 定时器
 	if m.config.GossipInterval > 0 && m.config.GossipNodes > 0 {
 		t := time.NewTicker(m.config.GossipInterval)
 		go m.triggerFunc(m.config.GossipInterval, t.C, stopCh, m.gossip)
 		m.tickers = append(m.tickers, t)
 	}
-
-	// If we made any tickers, then record the stopTick channel for
-	// later.
 	if len(m.tickers) > 0 {
-		m.stopTick = stopCh
+		m.stopTickCh = stopCh
 	}
 }
 
@@ -186,31 +176,29 @@ func (m *Members) pushPullTrigger(stop <-chan struct{}) {
 	}
 }
 
-// Deschedule is used to stop the background maintenance. This is safe
-// to call multiple times.
+// 停止后台循环
 func (m *Members) deschedule() {
 	m.tickerLock.Lock()
 	defer m.tickerLock.Unlock()
 
-	// If we have no tickers, then we aren't scheduled.
+	// 如果我们没有定时器，那么我们就没有被调度。
 	if len(m.tickers) == 0 {
 		return
 	}
 
-	// Close the stop channel so all the ticker listeners stop.
-	close(m.stopTick)
+	// 关闭stop channel，使所有的ticker监听者停止。
+	close(m.stopTickCh)
 
-	// Explicitly stop all the tickers themselves so they don't take
-	// up any more resources, and get rid of the list.
+	// 关闭定时器
 	for _, t := range m.tickers {
 		t.Stop()
 	}
 	m.tickers = nil
 }
 
-// Tick is used to perform a single round of failure detection and gossip
+// Tick用于执行单轮故障检测
 func (m *Members) probe() {
-	// Track the number of indexes we've considered probing
+	// 探测过的数量
 	numCheck := 0
 START:
 	m.nodeLock.RLock()
@@ -323,7 +311,7 @@ func (m *Members) probeNode(node *nodeState) {
 	}()
 	if node.State == StateAlive {
 		if err := m.encodeAndSendMsg(node.FullAddress(), pingMsg, &ping); err != nil {
-			m.logger.Printf("[ERR] memberlist: Failed to send ping: %s", err)
+			m.logger.Printf("[错误] memberlist: Failed to send ping: %s", err)
 			if failedRemote(err) {
 				goto HANDLE_REMOTE_FAILURE
 			} else {
@@ -333,14 +321,14 @@ func (m *Members) probeNode(node *nodeState) {
 	} else {
 		var msgs [][]byte
 		if buf, err := encode(pingMsg, &ping); err != nil {
-			m.logger.Printf("[ERR] memberlist: Failed to encode ping message: %s", err)
+			m.logger.Printf("[错误] memberlist: Failed to encode ping message: %s", err)
 			return
 		} else {
 			msgs = append(msgs, buf.Bytes())
 		}
 		s := suspect{Incarnation: node.Incarnation, Node: node.Name, From: m.config.Name}
 		if buf, err := encode(suspectMsg, &s); err != nil {
-			m.logger.Printf("[ERR] memberlist: Failed to encode suspect message: %s", err)
+			m.logger.Printf("[错误] memberlist: Failed to encode suspect message: %s", err)
 			return
 		} else {
 			msgs = append(msgs, buf.Bytes())
@@ -348,7 +336,7 @@ func (m *Members) probeNode(node *nodeState) {
 
 		compound := makeCompoundMessage(msgs)
 		if err := m.rawSendMsgPacket(node.FullAddress(), &node.Node, compound.Bytes()); err != nil {
-			m.logger.Printf("[ERR] memberlist: Failed to send compound ping and suspect message to %s: %s", addr, err)
+			m.logger.Printf("[错误] memberlist: Failed to send compound ping and suspect message to %s: %s", addr, err)
 			if failedRemote(err) {
 				goto HANDLE_REMOTE_FAILURE
 			} else {
@@ -420,7 +408,7 @@ HANDLE_REMOTE_FAILURE:
 		}
 
 		if err := m.encodeAndSendMsg(peer.FullAddress(), indirectPingMsg, &ind); err != nil {
-			m.logger.Printf("[ERR] memberlist: Failed to send indirect ping: %s", err)
+			m.logger.Printf("[错误] memberlist: Failed to send indirect ping: %s", err)
 		}
 	}
 
@@ -447,7 +435,7 @@ HANDLE_REMOTE_FAILURE:
 				if ne, ok := err.(net.Error); ok && ne.Timeout() {
 					to = fmt.Sprintf("timeout %s: ", probeInterval)
 				}
-				m.logger.Printf("[ERR] memberlist: Failed fallback ping: %s%s", to, err)
+				m.logger.Printf("[错误] memberlist: Failed fallback ping: %s%s", to, err)
 			} else {
 				fallbackCh <- didContact
 			}
@@ -605,14 +593,14 @@ func (m *Members) gossip() {
 		if len(msgs) == 1 {
 			// Send single message as is
 			if err := m.rawSendMsgPacket(node.FullAddress(), &node, msgs[0]); err != nil {
-				m.logger.Printf("[ERR] memberlist: Failed to send gossip to %s: %s", addr, err)
+				m.logger.Printf("[错误] memberlist: Failed to send gossip to %s: %s", addr, err)
 			}
 		} else {
 			// Otherwise create and send one or more compound messages
 			compounds := makeCompoundMessages(msgs)
 			for _, compound := range compounds {
 				if err := m.rawSendMsgPacket(node.FullAddress(), &node, compound.Bytes()); err != nil {
-					m.logger.Printf("[ERR] memberlist: Failed to send gossip to %s: %s", addr, err)
+					m.logger.Printf("[错误] memberlist: Failed to send gossip to %s: %s", addr, err)
 				}
 			}
 		}
@@ -640,7 +628,7 @@ func (m *Members) pushPull() {
 
 	// Attempt a push pull
 	if err := m.pushPullNode(node.FullAddress(), false); err != nil {
-		m.logger.Printf("[ERR] memberlist: Push/Pull with %s failed: %s", node.Name, err)
+		m.logger.Printf("[错误] memberlist: Push/Pull with %s failed: %s", node.Name, err)
 	}
 }
 
@@ -783,7 +771,7 @@ func (m *Members) nextSeqNo() uint32 {
 	return atomic.AddUint32(&m.sequenceNum, 1)
 }
 
-// nextIncarnation returns the next incarnation number in a thread safe way
+// nextIncarnation 以线程安全的方式返回下一个incarnation的编号。
 func (m *Members) nextIncarnation() uint32 {
 	return atomic.AddUint32(&m.incarnation, 1)
 }
@@ -915,8 +903,7 @@ func (m *Members) refute(me *nodeState, accusedInc uint32) {
 	m.encodeAndBroadcast(me.Addr.String(), aliveMsg, a)
 }
 
-// aliveNode is invoked by the network layer when we get a message about a
-// live node.
+// aliveNode 广播某个存活着的节点信息
 func (m *Members) aliveNode(a *alive, notify chan struct{}, bootstrap bool) {
 	m.nodeLock.Lock()
 	defer m.nodeLock.Unlock()
@@ -1030,7 +1017,7 @@ func (m *Members) aliveNode(a *alive, notify chan struct{}, bootstrap bool) {
 					state.Name, state.Addr, state.Port, net.IP(a.Addr), a.Port)
 				updatesNode = true
 			} else {
-				m.logger.Printf("[ERR] memberlist: Conflicting address for %s. Mine: %v:%d Theirs: %v:%d Old state: %v",
+				m.logger.Printf("[错误] memberlist: Conflicting address for %s. Mine: %v:%d Theirs: %v:%d Old state: %v",
 					state.Name, state.Addr, state.Port, net.IP(a.Addr), a.Port, state.State)
 
 				// Inform the conflict delegate if provided

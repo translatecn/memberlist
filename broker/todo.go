@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"github.com/hashicorp/go-sockaddr"
 	"net"
+	"runtime"
+	"time"
 )
 
-func main() {
+func ma2in() {
 	ip := net.ParseIP("0.0.0.0")
 	tcpAddr := &net.TCPAddr{IP: ip, Port: 0}
 	tcpLn, _ := net.ListenTCP("tcp", tcpAddr)
@@ -20,4 +23,13 @@ func main() {
 	fmt.Println(sockaddr.GetPrivateIP())
 	fmt.Println(sockaddr.GetPrivateIP())
 	fmt.Println(sockaddr.GetPrivateIP())
+}
+
+func main() {
+	context.Background().Done()
+	runtime.GOMAXPROCS(199999)
+	for i:=0;i<10;i++{
+		go fmt.Println(i)
+	}
+	time.Sleep(time.Second)
 }

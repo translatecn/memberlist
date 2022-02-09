@@ -45,7 +45,7 @@ type Members struct {
 	advertisePort uint16
 
 	config         *Config
-	shutdown       int32
+	shutdown       int32 // 停止标志
 	shutdownCh     chan struct{}
 	leave          int32
 	leaveBroadcast chan struct{} // 离开广播
@@ -67,7 +67,7 @@ type Members struct {
 
 	tickerLock sync.Mutex
 	tickers    []*time.Ticker
-	stopTick   chan struct{}
+	stopTickCh chan struct{}
 	probeIndex int
 
 	ackLock     sync.Mutex
@@ -78,17 +78,16 @@ type Members struct {
 	logger *log.Logger
 }
 
-// BuildVsnArray creates the array of Vsn
+// BuildVsnArray 创建Vsn数组
 func (c *Config) BuildVsnArray() []uint8 {
 	return []uint8{
 		ProtocolVersionMin, ProtocolVersionMax, c.ProtocolVersion,
-		c.DelegateProtocolMin, c.DelegateProtocolMax,
-		c.DelegateProtocolVersion,
+		c.DelegateProtocolMin, c.DelegateProtocolMax, c.DelegateProtocolVersion,
 	}
 }
 
-// newMemberlist 创建网络监听器,只能在主线程被调度
-func newMemberlist(conf *Config) (*Members, error) {
+// newMembers 创建网络监听器,只能在主线程被调度
+func newMembers(conf *Config) (*Members, error) {
 	if conf.ProtocolVersion < ProtocolVersionMin {
 		return nil, fmt.Errorf("协议版本 '%d' 太小. 必须在这个范围: [%d, %d]", conf.ProtocolVersion, ProtocolVersionMin, ProtocolVersionMax)
 	} else if conf.ProtocolVersion > ProtocolVersionMax {
@@ -214,15 +213,15 @@ func newMemberlist(conf *Config) (*Members, error) {
 		return nil, err
 	}
 
-	go m.streamListen()
-	go m.packetListen()
-	go m.packetHandler()
+	go m.streamListen()  // pull 模式
+	go m.packetListen()  // 直接消息传递
+	go m.packetHandler() //TODO 用于处理消息
 	return m, nil
 }
 
 // Create 不会链接其他节点、但会开启listeners,允许其他节点加入；之后Config不应该被改变
 func Create(conf *Config) (*Members, error) {
-	m, err := newMemberlist(conf)
+	m, err := newMembers(conf) // ok
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +229,7 @@ func Create(conf *Config) (*Members, error) {
 		m.Shutdown()
 		return nil, err
 	}
-	m.schedule()
+	m.schedule() // 开启各种定时器
 	return m, nil
 }
 
@@ -401,44 +400,42 @@ func (m *Members) resolveAddr(hostStr string) ([]ipPort, error) {
 	return ips, nil
 }
 
-// setAlive is used to mark this node as being alive. This is the same
-// as if we received an alive notification our own network channel for
-// ourself.
+// setAlive 用于将此节点标记为活动节点。这就像我们自己的network channel收到一个alive通知一样。
 func (m *Members) setAlive() error {
-	// Get the final advertise address from the transport, which may need
-	// to see which address we bound to.
+	//TODO 获取广播地址？会一直变么
 	addr, port, err := m.refreshAdvertise()
 	if err != nil {
 		return err
 	}
 
-	// Check if this is a public address without encryption
+	// 检查是不是IPv4、IPv6地址
 	ipAddr, err := sockaddr.NewIPAddr(addr.String())
 	if err != nil {
-		return fmt.Errorf("Failed to parse interface addresses: %v", err)
+		return fmt.Errorf("解析通信地址失败: %v", err)
 	}
 	ifAddrs := []sockaddr.IfAddr{
 		sockaddr.IfAddr{
 			SockAddr: ipAddr,
 		},
 	}
+	// 返回匹配和不匹配的ifaddr列表，其中包含rfc指定的相关特征。
 	_, publicIfs, err := sockaddr.IfByRFC("6890", ifAddrs)
 	if len(publicIfs) > 0 && !m.config.EncryptionEnabled() {
-		m.logger.Printf("[WARN] memberlist: Binding to public address without encryption!")
+		m.logger.Printf("[WARN] memberlist: 绑定到公共地址而不加密!")
 	}
 
-	// Set any metadata from the delegate.
+	// 判断元数据的大小。
 	var meta []byte
 	if m.config.Delegate != nil {
 		meta = m.config.Delegate.NodeMeta(MetaMaxSize)
 		if len(meta) > MetaMaxSize {
-			panic("Node meta data provided is longer than the limit")
+			panic("节点元数据长度超过限制")
 		}
 	}
 
 	a := alive{
 		Incarnation: m.nextIncarnation(),
-		Node:        m.config.Name,
+		Node:        m.config.Name, // 节点名字、唯一
 		Addr:        addr,
 		Port:        uint16(port),
 		Meta:        meta,
@@ -463,7 +460,7 @@ func (m *Members) setAdvertise(addr net.IP, port int) {
 	m.advertisePort = uint16(port)
 }
 
-// 公布更新
+// 刷新广播地址
 func (m *Members) refreshAdvertise() (net.IP, int, error) {
 	addr, port, err := m.transport.FinalAdvertiseAddr(m.config.AdvertiseAddr, m.config.AdvertisePort) // "" 8000
 	if err != nil {
@@ -697,32 +694,22 @@ func (m *Members) ProtocolVersion() uint8 {
 	return m.config.ProtocolVersion
 }
 
-// Shutdown will stop any background maintenance of network activity
-// for this memberlist, causing it to appear "dead". A leave message
-// will not be broadcasted prior, so the cluster being left will have
-// to detect this node's shutdown using probing. If you wish to more
-// gracefully exit the cluster, call Leave prior to shutting down.
-//
-// This method is safe to call multiple times.
+// Shutdown 优雅的退出集群、发送Leave消息【幂等】
 func (m *Members) Shutdown() error {
 	m.shutdownLock.Lock()
 	defer m.shutdownLock.Unlock()
-
+	// 之前为0
 	if m.hasShutdown() {
 		return nil
 	}
-
-	// Shut down the transport first, which should block until it's
-	// completely torn down. If we kill the memberlist-side handlers
-	// those I/O handlers might get stuck.
+	// 设置为1
 	if err := m.transport.Shutdown(); err != nil {
-		m.logger.Printf("[ERR] Failed to shutdown transport: %v", err)
+		m.logger.Printf("[错误] 停止transport: %v", err)
 	}
 
-	// Now tear down everything else.
-	atomic.StoreInt32(&m.shutdown, 1)
+	atomic.StoreInt32(&m.shutdown, 1) // 设置为1 ;执行了两次
 	close(m.shutdownCh)
-	m.deschedule()
+	m.deschedule() // 停止定时器
 	return nil
 }
 

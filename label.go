@@ -29,15 +29,13 @@ func AddLabelHeaderToPacket(buf []byte, label string) ([]byte, error) {
 	return makeLabelHeader(label, buf), nil
 }
 
-// RemoveLabelHeaderFromPacket removes any label header from the provided
-// packet and returns it along with the remaining packet contents.
+// RemoveLabelHeaderFromPacket 从提供的包中删除任何标签头，并将其与剩余的包内容一起返回。
 func RemoveLabelHeaderFromPacket(buf []byte) (newBuf []byte, label string, err error) {
 	if len(buf) == 0 {
-		return buf, "", nil // can't possibly be labeled
+		return buf, "", nil // 不可能有标签
 	}
 
 	// [type:byte] [size:byte] [size bytes]
-
 	msgType := messageType(buf[0])
 	if msgType != hasLabelMsg {
 		return buf, "", nil

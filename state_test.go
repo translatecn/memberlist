@@ -29,7 +29,7 @@ func HostMemberlist(host string, t *testing.T, f func(*Config)) *Members {
 		f(c)
 	}
 
-	m, err := newMemberlist(c)
+	m, err := newMembers(c)
 	if err != nil {
 		t.Fatalf("failed to get memberlist: %s", err)
 	}

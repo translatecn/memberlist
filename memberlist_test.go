@@ -155,7 +155,7 @@ func GetMemberlist(tb testing.TB, f func(c *Config)) *Members {
 		f(c)
 	}
 
-	m, err := newMemberlist(c)
+	m, err := newMembers(c)
 	require.NoError(tb, err)
 	return m
 }

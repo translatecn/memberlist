@@ -236,12 +236,12 @@ func (t *NetTransport) IngestStream(conn net.Conn) error {
 	return nil
 }
 
-// See Transport.
+// Shutdown    .
 func (t *NetTransport) Shutdown() error {
-	// This will avoid log spam about errors when we shut down.
+	// 这将避免在我们关闭时出现关于错误的日志垃圾。
 	atomic.StoreInt32(&t.shutdown, 1)
 
-	// Rip through all the connections and shut them down.
+	// 对所有的连接，关闭它们。
 	for _, conn := range t.tcpListeners {
 		conn.Close()
 	}
@@ -249,7 +249,6 @@ func (t *NetTransport) Shutdown() error {
 		conn.Close()
 	}
 
-	// Block until all the listener threads have died.
 	t.wg.Wait()
 	return nil
 }
@@ -285,7 +284,7 @@ func (t *NetTransport) tcpListen(tcpLn *net.TCPListener) {
 				loopDelay = maxDelay
 			}
 
-			t.logger.Printf("[ERR] memberlist: Error accepting TCP connection: %v", err)
+			t.logger.Printf("[错误] memberlist: Error accepting TCP connection: %v", err)
 			time.Sleep(loopDelay)
 			continue
 		}
@@ -311,14 +310,14 @@ func (t *NetTransport) udpListen(udpLn *net.UDPConn) {
 				break
 			}
 
-			t.logger.Printf("[ERR] memberlist: Error reading UDP packet: %v", err)
+			t.logger.Printf("[错误] memberlist: Error reading UDP packet: %v", err)
 			continue
 		}
 
 		// Check the length - it needs to have at least one byte to be a
 		// proper message.
 		if n < 1 {
-			t.logger.Printf("[ERR] memberlist: UDP packet too short (%d bytes) %s",
+			t.logger.Printf("[错误] memberlist: UDP packet too short (%d bytes) %s",
 				len(buf), LogAddress(addr))
 			continue
 		}
