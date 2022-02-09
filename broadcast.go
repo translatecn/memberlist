@@ -14,8 +14,7 @@ are contradictory. For example, if we send "{suspect M1 inc: 1},
 then a following {alive M1 inc: 2} will invalidate that message
 */
 
-// encodeBroadcast encodes a message and enqueues it for broadcast. Fails
-// silently if there is an encoding error.
+// encodeBroadcast 编码消息,并将其入队用于广播
 func (m *Members) encodeBroadcast(node string, msgType messageType, msg interface{}) {
 	m.encodeBroadcastNotify(node, msgType, msg, nil)
 }
@@ -41,7 +40,6 @@ func (m *Members) encodeBroadcastNotify(node string, msgType messageType, msg in
 
 // queueBroadcast 开始广播消息,它将被发送至配置的次数。该消息有可能被未来关于同一节点的消息所废止。
 func (m *Members) queueBroadcast(node string, msg []byte, notify chan struct{}) {
-
 	b := &queue_broadcast.MemberlistBroadcast{Node: node, Msg: msg, Notify: notify}
 	m.broadcasts.QueueBroadcast(b)
 }

@@ -60,7 +60,6 @@ func yield() {
 	time.Sleep(250 * time.Millisecond)
 }
 
-// 虚拟委托
 type MockDelegate struct {
 	mu          sync.Mutex
 	meta        []byte
@@ -296,7 +295,7 @@ func TestCreate_invalidLoggerSettings(t *testing.T) {
 	m, err := Create(c)
 	if err == nil {
 		require.NoError(t, m.Shutdown())
-		t.Fatal("Members should not allow both LogOutput and Logger to be set, but it did not raise an error")
+		t.Fatal("Memberlist should not allow both LogOutput and Logger to be set, but it did not raise an error")
 	}
 }
 
@@ -1286,9 +1285,9 @@ func TestMemberlist_UserData(t *testing.T) {
 
 	bindPort := m1.config.BindPort
 
-	bcasts := make([][]byte, 256)
-	for i := range bcasts {
-		bcasts[i] = []byte(fmt.Sprintf("%d", i))
+	bcasts := [][]byte{
+		[]byte("test"),
+		[]byte("foobar"),
 	}
 
 	// Create a second node

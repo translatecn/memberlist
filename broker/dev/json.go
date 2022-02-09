@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-func Println(data interface{})  {
+func Println(data interface{}) {
 	marshal, _ := json.Marshal(data)
 	fmt.Println(string(marshal))
 }

@@ -19,7 +19,7 @@ func main() {
 	conf.AdvertisePort = port               // 向其他集群成员发布的地址
 	conf.BindPort = port                    //TODO 集群中的节点通过绑定port进行通信
 	dev.Println(conf)
-	list, err := memberlist.Create(conf)// 节点探测、push\pull、gossip消息发送服务
+	list, err := memberlist.Create(conf) // 节点探测、push\pull、gossip消息发送服务
 	if err != nil {
 		panic("Failed to create memberlist: " + err.Error())
 	}

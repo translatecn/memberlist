@@ -12,7 +12,7 @@ type limitedBroadcast struct {
 	transmits int       // btree-key[0]: 尝试传输的次数
 	msgLen    int64     // btree-key[1]: 消息长度len(b.Message())
 	id        int64     // btree-key[2]: 提交时的唯一的递增标识
-	b         Broadcast // 广播消息
+	B         Broadcast // 广播消息
 
 	name string // set if Broadcast is a NamedBroadcast
 }
@@ -70,8 +70,8 @@ func (b *limitedBroadcast) Less(than btree.Item) bool {
 	return b.id > o.id
 }
 
-// for testing; emits in transmit order if reverse=false
-func (q *TransmitLimitedQueue) orderedView(reverse bool) []*limitedBroadcast {
+// OrderedView for testing; emits in transmit order if reverse=false
+func (q *TransmitLimitedQueue) OrderedView(reverse bool) []*limitedBroadcast {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -140,7 +140,7 @@ func (q *TransmitLimitedQueue) queueBroadcast(b Broadcast, initialTransmits int)
 		transmits: initialTransmits, // 传输次数
 		msgLen:    int64(len(b.Message())),
 		id:        id,
-		b:         b,
+		B:         b,
 	}
 	unique := false
 	if nb, ok := b.(NamedBroadcast); ok {
@@ -153,7 +153,7 @@ func (q *TransmitLimitedQueue) queueBroadcast(b Broadcast, initialTransmits int)
 	// 检查这个消息是否使另一个消息无效。
 	if lb.name != "" {
 		if old, ok := q.tm[lb.name]; ok {
-			old.b.Finished()
+			old.B.Finished()
 			q.deleteItem(old)
 		}
 	} else if !unique {
@@ -164,14 +164,14 @@ func (q *TransmitLimitedQueue) queueBroadcast(b Broadcast, initialTransmits int)
 			cur := item.(*limitedBroadcast)
 
 			// Special Broadcasts can only invalidate each other.
-			switch cur.b.(type) {
+			switch cur.B.(type) {
 			case NamedBroadcast:
 				// noop
 			case UniqueBroadcast:
 				// noop
 			default:
-				if b.Invalidates(cur.b) {
-					cur.b.Finished()
+				if b.Invalidates(cur.B) {
+					cur.B.Finished()
 					remove = append(remove, cur)
 				}
 			}
@@ -273,7 +273,7 @@ func (q *TransmitLimitedQueue) GetBroadcasts(overhead, limit int) [][]byte {
 		q.tq.AscendRange(greaterOrEqual, lessThan, func(item btree.Item) bool {
 			cur := item.(*limitedBroadcast)
 			// Check if this is within our limits
-			if int64(len(cur.b.Message())) > free {
+			if int64(len(cur.B.Message())) > free {
 				// If this happens it's a bug in the datastructure or
 				// surrounding use doing something like having len(Message())
 				// change over time. There's enough going on here that it's
@@ -289,7 +289,7 @@ func (q *TransmitLimitedQueue) GetBroadcasts(overhead, limit int) [][]byte {
 			continue
 		}
 
-		msg := keep.b.Message()
+		msg := keep.B.Message()
 
 		// Add to slice to send
 		bytesUsed += overhead + len(msg)
@@ -298,7 +298,7 @@ func (q *TransmitLimitedQueue) GetBroadcasts(overhead, limit int) [][]byte {
 		// Check if we should stop transmission
 		q.deleteItem(keep)
 		if keep.transmits+1 >= transmitLimit {
-			keep.b.Finished()
+			keep.B.Finished()
 		} else {
 			// We need to bump this item down to another transmit tier, but
 			// because it would be in the same direction that we're walking the
@@ -339,7 +339,7 @@ func (q *TransmitLimitedQueue) Reset() {
 	defer q.mu.Unlock()
 
 	q.walkReadOnlyLocked(false, func(cur *limitedBroadcast) bool {
-		cur.b.Finished()
+		cur.B.Finished()
 		return true
 	})
 
@@ -361,7 +361,7 @@ func (q *TransmitLimitedQueue) Prune(maxRetain int) {
 			break
 		}
 		cur := item.(*limitedBroadcast)
-		cur.b.Finished()
+		cur.B.Finished()
 		q.deleteItem(cur)
 	}
 }

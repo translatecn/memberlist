@@ -130,7 +130,7 @@ func RemoveLabelHeaderFromStream(conn net.Conn) (net.Conn, string, error) {
 // newPeekedConnFromBufferedReader 将读取到的数据拼接回conn
 // 先从Peeked读取,再从Conn读
 func newPeekedConnFromBufferedReader(conn net.Conn, br *bufio.Reader, offset int) (*peekedConn, error) {
-	peeked, err := br.Peek(br.Buffered())// 将所有的数据读取出来
+	peeked, err := br.Peek(br.Buffered()) // 将所有的数据读取出来
 	if err != nil {
 		return nil, err
 	}

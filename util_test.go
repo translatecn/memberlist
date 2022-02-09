@@ -88,8 +88,6 @@ func TestSuspicionTimeout(t *testing.T) {
 	}
 }
 
-
-
 func TestShuffleNodes(t *testing.T) {
 	orig := []*nodeState{
 		&nodeState{

@@ -1,4 +1,5 @@
 package queue_broadcast
+
 // NamedBroadcast is an optional extension of the Broadcast interface that
 // gives each message a unique string name, and that is used to optimize
 //

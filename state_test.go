@@ -930,7 +930,7 @@ func TestMemberList_ProbeNode_Buddy(t *testing.T) {
 	}
 
 	// Should be alive msg.
-	if messageType(m2.broadcasts.orderedView(true)[0].b.Message()[0]) != aliveMsg {
+	if messageType(m2.broadcasts.OrderedView(true)[0].B.Message()[0]) != aliveMsg {
 		t.Fatalf("expected queued alive msg")
 	}
 }
@@ -1474,7 +1474,7 @@ func TestMemberList_AliveNode_Refute(t *testing.T) {
 	}
 
 	// Should be alive mesg
-	if messageType(m.broadcasts.orderedView(true)[0].b.Message()[0]) != aliveMsg {
+	if messageType(m.broadcasts.OrderedView(true)[0].B.Message()[0]) != aliveMsg {
 		t.Fatalf("expected queued alive msg")
 	}
 }
@@ -1603,7 +1603,7 @@ func TestMemberList_SuspectNode(t *testing.T) {
 	}
 
 	// Check its a suspect message
-	if messageType(m.broadcasts.orderedView(true)[0].b.Message()[0]) != suspectMsg {
+	if messageType(m.broadcasts.OrderedView(true)[0].B.Message()[0]) != suspectMsg {
 		t.Fatalf("expected queued suspect msg")
 	}
 
@@ -1628,7 +1628,7 @@ func TestMemberList_SuspectNode(t *testing.T) {
 	}
 
 	// Check its a suspect message
-	if messageType(m.broadcasts.orderedView(true)[0].b.Message()[0]) != deadMsg {
+	if messageType(m.broadcasts.OrderedView(true)[0].B.Message()[0]) != deadMsg {
 		t.Fatalf("expected queued dead msg")
 	}
 }
@@ -1727,7 +1727,7 @@ func TestMemberList_SuspectNode_Refute(t *testing.T) {
 	}
 
 	// Should be alive mesg
-	if messageType(m.broadcasts.orderedView(true)[0].b.Message()[0]) != aliveMsg {
+	if messageType(m.broadcasts.OrderedView(true)[0].B.Message()[0]) != aliveMsg {
 		t.Fatalf("expected queued alive msg")
 	}
 
@@ -1786,7 +1786,7 @@ func TestMemberList_DeadNodeLeft(t *testing.T) {
 	}
 
 	// Check its a dead message
-	if messageType(m.broadcasts.orderedView(true)[0].b.Message()[0]) != deadMsg {
+	if messageType(m.broadcasts.OrderedView(true)[0].B.Message()[0]) != deadMsg {
 		t.Fatalf("expected queued dead msg")
 	}
 
@@ -1866,7 +1866,7 @@ func TestMemberList_DeadNode(t *testing.T) {
 	}
 
 	// Check its a dead message
-	if messageType(m.broadcasts.orderedView(true)[0].b.Message()[0]) != deadMsg {
+	if messageType(m.broadcasts.OrderedView(true)[0].B.Message()[0]) != deadMsg {
 		t.Fatalf("expected queued dead msg")
 	}
 }
@@ -1974,7 +1974,7 @@ func TestMemberList_DeadNode_Refute(t *testing.T) {
 	}
 
 	// Should be alive mesg
-	if messageType(m.broadcasts.orderedView(true)[0].b.Message()[0]) != aliveMsg {
+	if messageType(m.broadcasts.OrderedView(true)[0].B.Message()[0]) != aliveMsg {
 		t.Fatalf("expected queued alive msg")
 	}
 

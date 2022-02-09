@@ -859,4 +859,3 @@ func (m *Members) refute(me *nodeState, accusedInc uint32) {
 	}
 	m.encodeBroadcast(me.Addr.String(), aliveMsg, a)
 }
-

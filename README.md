@@ -14,18 +14,18 @@ Memberlist 使用起来非常简单。一个例子如下所示：
 */
 list, err := memberlist.Create(memberlist.DefaultLocalConfig())
 if err != nil {
-	panic("Failed to create memberlist: " + err.Error())
+panic("Failed to create memberlist: " + err.Error())
 }
 
 // Join an existing cluster by specifying at least one known member.
 n, err := list.Join([]string{"1.2.3.4"})
 if err != nil {
-	panic("Failed to join cluster: " + err.Error())
+panic("Failed to join cluster: " + err.Error())
 }
 
 // Ask for members of the cluster
 for _, member := range list.Members() {
-	fmt.Printf("Member: %s %s\n", member.Name, member.Addr)
+fmt.Printf("Member: %s %s\n", member.Name, member.Addr)
 }
 
 // Continue doing whatever you need, memberlist will maintain membership
@@ -37,7 +37,6 @@ memberlist 最困难的部分是配置它，因为它有许多可用的旋钮来
 提供了一个默认配置，它提供了一个良好的起点，但在谨慎方面会犯错误，选择为更高的收敛性而优化的值，但会以更高的带宽使用为代价。 For complete documentation, see the
 associated [Godoc](http://godoc.org/github.com/hashicorp/memberlist).
 
-
 ``` 
 UDP gossip 
 TCP push/pull
@@ -45,6 +44,7 @@ refute gossip
 ```
 
 ### Node Change
+
 ```
 
 StateAlive 
@@ -64,9 +64,8 @@ m.pushPull
 m.probeNode
 ```
 
-
-
 ### Join
+
 ```
 sendAndReceiveState()
 ---> 
@@ -85,7 +84,6 @@ sendAndReceiveState()
     
 ```
 
-
 ```
 streamLabel 只有在 hasLabelMsg 类型下有
 
@@ -99,10 +97,8 @@ pushPullMsg
 userMsg
 ```
 
-
-
-
 ### issue
+
 1、StateDead与StateLeft的区别
 
 
