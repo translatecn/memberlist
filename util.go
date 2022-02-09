@@ -8,13 +8,9 @@ import (
 	"io"
 	"math"
 	"math/rand"
-	"net"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/hashicorp/go-msgpack/codec"
-	"github.com/sean-/seed"
 )
 
 const pushPullScaleThreshold = 32
@@ -23,10 +19,6 @@ const (
 	// Constant litWidth 2-8
 	lzwLitWidth = 8
 )
-
-func init() {
-	seed.Init()
-}
 
 // 解码
 func decode(buf []byte, out interface{}) error {
@@ -61,13 +53,6 @@ func suspicionTimeout(suspicionMult, n int, interval time.Duration) time.Duratio
 	// multiply by 1000 to keep some precision because time.Duration is an int64 type
 	timeout := time.Duration(suspicionMult) * time.Duration(nodeScale*1000) * interval / 1000
 	return timeout
-}
-
-// retransmitLimit computes the limit of retransmissions
-func retransmitLimit(retransmitMult, n int) int {
-	nodeScale := math.Ceil(math.Log10(float64(n + 1)))
-	limit := retransmitMult * int(nodeScale)
-	return limit
 }
 
 // shuffleNodes randomly shuffles the input nodes using the Fisher-Yates shuffle
@@ -277,31 +262,4 @@ func decompressBuffer(c *compress) ([]byte, error) {
 
 	// Return the uncompressed bytes
 	return b.Bytes(), nil
-}
-
-// joinHostPort host:port
-func joinHostPort(host string, port uint16) string {
-	return net.JoinHostPort(host, strconv.Itoa(int(port)))
-}
-
-// hasPort "host", "host:port", "ipv6::address",or "[ipv6::address]:port"
-// 是否包含端口
-func hasPort(s string) bool {
-	// IPv6 地址
-	if strings.LastIndex(s, "[") == 0 {
-		return strings.LastIndex(s, ":") > strings.LastIndex(s, "]")
-	}
-	//是否包含：
-	return strings.Count(s, ":") == 1
-}
-
-// ensurePort 确保给定了一个端口,如果没有设置，就使用默认的端口
-func ensurePort(s string, port int) string {
-	if hasPort(s) {
-		return s
-	}
-	// 如果是IPV6地址
-	s = strings.Trim(s, "[]")
-	s = net.JoinHostPort(s, strconv.Itoa(port))
-	return s
 }

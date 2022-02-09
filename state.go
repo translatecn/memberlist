@@ -2,6 +2,7 @@ package memberlist
 
 import (
 	"fmt"
+	"github.com/hashicorp/memberlist/pkg"
 	"math"
 	"math/rand"
 	"net"
@@ -37,14 +38,14 @@ type Node struct {
 // Address returns the host:port form of a node's address, suitable for use
 // with a transport.
 func (n *Node) Address() string {
-	return joinHostPort(n.Addr.String(), n.Port)
+	return pkg.JoinHostPort(n.Addr.String(), n.Port)
 }
 
 // FullAddress returns the node name and host:port form of a node's address,
 // suitable for use with a transport.
 func (n *Node) FullAddress() Address {
 	return Address{
-		Addr: joinHostPort(n.Addr.String(), n.Port),
+		Addr: pkg.JoinHostPort(n.Addr.String(), n.Port),
 		Name: n.Name,
 	}
 }

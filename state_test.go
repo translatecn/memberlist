@@ -1446,7 +1446,7 @@ func TestMemberList_AliveNode_Refute(t *testing.T) {
 	a := alive{Node: m.config.Name, Addr: []byte{127, 0, 0, 1}, Incarnation: 1, Vsn: m.config.BuildVsnArray()}
 	m.aliveNode(&a, nil, true)
 
-	// Clear queue
+	// Clear queue_broadcast
 	m.broadcasts.Reset()
 
 	// Conflicting alive
@@ -1489,7 +1489,7 @@ func TestMemberList_AliveNode_Conflict(t *testing.T) {
 	a := alive{Node: nodeName, Addr: []byte{127, 0, 0, 1}, Port: 8000, Incarnation: 1, Vsn: m.config.BuildVsnArray()}
 	m.aliveNode(&a, nil, true)
 
-	// Clear queue
+	// Clear queue_broadcast
 	m.broadcasts.Reset()
 
 	// Conflicting alive
@@ -1655,7 +1655,7 @@ func TestMemberList_SuspectNode_DoubleSuspect(t *testing.T) {
 		t.Fatalf("bad change delta")
 	}
 
-	// clear the broadcast queue
+	// clear the broadcast queue_broadcast
 	m.broadcasts.Reset()
 
 	// Suspect again
@@ -1682,7 +1682,7 @@ func TestMemberList_SuspectNode_OldSuspect(t *testing.T) {
 	state := m.nodeMap["test"]
 	state.StateChange = state.StateChange.Add(-time.Hour)
 
-	// Clear queue
+	// Clear queue_broadcast
 	m.broadcasts.Reset()
 
 	s := suspect{Node: "test", Incarnation: 1}
@@ -1705,7 +1705,7 @@ func TestMemberList_SuspectNode_Refute(t *testing.T) {
 	a := alive{Node: m.config.Name, Addr: []byte{127, 0, 0, 1}, Incarnation: 1, Vsn: m.config.BuildVsnArray()}
 	m.aliveNode(&a, nil, true)
 
-	// Clear queue
+	// Clear queue_broadcast
 	m.broadcasts.Reset()
 
 	// Make sure health is in a good state
@@ -1790,7 +1790,7 @@ func TestMemberList_DeadNodeLeft(t *testing.T) {
 		t.Fatalf("expected queued dead msg")
 	}
 
-	// Clear queue
+	// Clear queue_broadcast
 	// m.broadcasts.Reset()
 
 	// New alive node
@@ -1885,7 +1885,7 @@ func TestMemberList_DeadNode_Double(t *testing.T) {
 	d := dead{Node: "test", Incarnation: 1}
 	m.deadNode(&d)
 
-	// Clear queue
+	// Clear queue_broadcast
 	m.broadcasts.Reset()
 
 	// Notify after the first dead
@@ -1952,7 +1952,7 @@ func TestMemberList_DeadNode_Refute(t *testing.T) {
 	a := alive{Node: m.config.Name, Addr: []byte{127, 0, 0, 1}, Incarnation: 1, Vsn: m.config.BuildVsnArray()}
 	m.aliveNode(&a, nil, true)
 
-	// Clear queue
+	// Clear queue_broadcast
 	m.broadcasts.Reset()
 
 	// Make sure health is in a good state

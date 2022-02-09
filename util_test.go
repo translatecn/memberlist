@@ -2,6 +2,7 @@ package memberlist
 
 import (
 	"fmt"
+	"github.com/hashicorp/memberlist/pkg"
 	"reflect"
 	"testing"
 	"time"
@@ -27,10 +28,10 @@ func TestUtil_PortFunctions(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.addr, func(t *testing.T) {
-			if got, want := hasPort(tt.addr), tt.hasPort; got != want {
+			if got, want := pkg.HasPort(tt.addr), tt.hasPort; got != want {
 				t.Fatalf("got %v want %v", got, want)
 			}
-			if got, want := ensurePort(tt.addr, 8301), tt.ensurePort; got != want {
+			if got, want := pkg.EnsurePort(tt.addr, 8301), tt.ensurePort; got != want {
 				t.Fatalf("got %v want %v", got, want)
 			}
 		})
@@ -87,20 +88,7 @@ func TestSuspicionTimeout(t *testing.T) {
 	}
 }
 
-func TestRetransmitLimit(t *testing.T) {
-	lim := retransmitLimit(3, 0)
-	if lim != 0 {
-		t.Fatalf("bad val %v", lim)
-	}
-	lim = retransmitLimit(3, 1)
-	if lim != 3 {
-		t.Fatalf("bad val %v", lim)
-	}
-	lim = retransmitLimit(3, 99)
-	if lim != 6 {
-		t.Fatalf("bad val %v", lim)
-	}
-}
+
 
 func TestShuffleNodes(t *testing.T) {
 	orig := []*nodeState{

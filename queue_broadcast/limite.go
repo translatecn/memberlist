@@ -1,11 +1,21 @@
-package memberlist
+package queue_broadcast
 
 import (
+	"github.com/google/btree"
+	"github.com/hashicorp/memberlist/pkg"
 	"math"
 	"sync"
-
-	"github.com/google/btree"
 )
+
+// 被限制的广播
+type limitedBroadcast struct {
+	transmits int       // btree-key[0]: 尝试传输的次数
+	msgLen    int64     // btree-key[1]: 消息长度len(b.Message())
+	id        int64     // btree-key[2]: 提交时的唯一的递增标识
+	b         Broadcast // 广播消息
+
+	name string // set if Broadcast is a NamedBroadcast
+}
 
 // TransmitLimitedQueue
 // 用于对消息进行队列，以便(通过gossip)向集群广播，但限制每条消息的传输数量。它还对传输计数较低的消息(因此是较新的消息)进行优先级排序。
@@ -20,14 +30,19 @@ type TransmitLimitedQueue struct {
 	idGen          int64
 }
 
-// 被限制的广播
-type limitedBroadcast struct {
-	transmits int       // btree-key[0]: 尝试传输的次数
-	msgLen    int64     // btree-key[1]: 消息长度len(b.Message())
-	id        int64     // btree-key[2]: 提交时的唯一的递增标识
-	b         Broadcast // 广播消息
+// lazyInit 初始化内部数据结构
+func (q *TransmitLimitedQueue) lazyInit() {
+	if q.tq == nil {
+		q.tq = btree.New(32)
+	}
+	if q.tm == nil {
+		q.tm = make(map[string]*limitedBroadcast)
+	}
+}
 
-	name string // set if Broadcast is a NamedBroadcast
+// QueueBroadcast 广播消息入队
+func (q *TransmitLimitedQueue) QueueBroadcast(b Broadcast) {
+	q.queueBroadcast(b, 0)
 }
 
 // Less tests whether the current item is less than the given argument.
@@ -69,7 +84,7 @@ func (q *TransmitLimitedQueue) orderedView(reverse bool) []*limitedBroadcast {
 	return out
 }
 
-// walkReadOnlyLocked calls f for each item in the queue traversing it in
+// walkReadOnlyLocked calls f for each item in the queue_broadcast traversing it in
 // natural order (by Less) when reverse=false and the opposite when true. You
 // must hold the mutex.
 //
@@ -90,7 +105,7 @@ func (q *TransmitLimitedQueue) walkReadOnlyLocked(reverse bool, f func(*limitedB
 		keepGoing := f(cur)
 
 		if prevTransmits != cur.transmits || prevMsgLen != cur.msgLen || prevID != cur.id {
-			panic("edited queue while walking read only")
+			panic("edited queue_broadcast while walking read only")
 		}
 
 		return keepGoing
@@ -103,75 +118,13 @@ func (q *TransmitLimitedQueue) walkReadOnlyLocked(reverse bool, f func(*limitedB
 	}
 }
 
-// Broadcast 通过gossip协议发送到集群中成员
-type Broadcast interface {
-	// Invalidates 检查 当前广播消息 是否使先前的广播无效
-	Invalidates(b Broadcast) bool
-
-	// Message 返回消息体
-	Message() []byte
-
-	// Finished 当信息不再被广播时被调用，无论是由于无效还是由于 达到发送限制
-	Finished()
-}
-
-// NamedBroadcast is an optional extension of the Broadcast interface that
-// gives each message a unique string name, and that is used to optimize
-//
-// You shoud ensure that Invalidates() checks the same uniqueness as the
-// example below:
-//
-// func (b *foo) Invalidates(other Broadcast) bool {
-// 	nb, ok := other.(NamedBroadcast)
-// 	if !ok {
-// 		return false
-// 	}
-// 	return b.Name() == nb.Name()
-// }
-//
-// Invalidates() isn't currently used for NamedBroadcasts, but that may change
-// in the future.
-type NamedBroadcast interface {
-	Broadcast
-	// Name 广播消息的唯一标识符 ,消息发送方的主机名
-	Name() string
-}
-
-// UniqueBroadcast is an optional interface that indicates that each message is
-// intrinsically unique and there is no need to scan the broadcast queue for
-// duplicates.
-//
-// You should ensure that Invalidates() always returns false if implementing
-// this interface. Invalidates() isn't currently used for UniqueBroadcasts, but
-// that may change in the future.
-type UniqueBroadcast interface {
-	Broadcast
-	// UniqueBroadcast is just a marker method for this interface.
-	UniqueBroadcast()
-}
-
-// QueueBroadcast 广播消息入队
-func (q *TransmitLimitedQueue) QueueBroadcast(b Broadcast) {
-	q.queueBroadcast(b, 0)
-}
-
-// lazyInit 初始化内部数据结构
-func (q *TransmitLimitedQueue) lazyInit() {
-	if q.tq == nil {
-		q.tq = btree.New(32)
-	}
-	if q.tm == nil {
-		q.tm = make(map[string]*limitedBroadcast)
-	}
-}
-
 func (q *TransmitLimitedQueue) queueBroadcast(b Broadcast, initialTransmits int) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	q.lazyInit()
 	switch b.(type) {
-	case *memberlistBroadcast:
+	case *MemberlistBroadcast:
 	default:
 	}
 
@@ -191,7 +144,7 @@ func (q *TransmitLimitedQueue) queueBroadcast(b Broadcast, initialTransmits int)
 	}
 	unique := false
 	if nb, ok := b.(NamedBroadcast); ok {
-		var _ NamedBroadcast = &memberlistBroadcast{}
+		var _ NamedBroadcast = &MemberlistBroadcast{}
 		lb.name = nb.Name()
 	} else if _, ok := b.(UniqueBroadcast); ok {
 		unique = true
@@ -229,7 +182,7 @@ func (q *TransmitLimitedQueue) queueBroadcast(b Broadcast, initialTransmits int)
 		}
 	}
 
-	// Append to the relevant queue.
+	// Append to the relevant queue_broadcast.
 	q.addItem(lb)
 }
 
@@ -258,7 +211,7 @@ func (q *TransmitLimitedQueue) addItem(cur *limitedBroadcast) {
 }
 
 // getTransmitRange returns a pair of min/max values for transmit values
-// represented by the current queue contents. Both values represent actual
+// represented by the current queue_broadcast contents. Both values represent actual
 // transmit values on the interval [0, len). You must already hold the mutex.
 func (q *TransmitLimitedQueue) getTransmitRange() (minTransmit, maxTransmit int) {
 	if q.lenLocked() == 0 {
@@ -286,7 +239,7 @@ func (q *TransmitLimitedQueue) GetBroadcasts(overhead, limit int) [][]byte {
 		return nil
 	}
 
-	transmitLimit := retransmitLimit(q.RetransmitMult, q.NumNodes())
+	transmitLimit := pkg.RetransmitLimit(q.RetransmitMult, q.NumNodes())
 
 	var (
 		bytesUsed int
@@ -371,7 +324,7 @@ func (q *TransmitLimitedQueue) NumQueued() int {
 	return q.lenLocked()
 }
 
-// lenLocked returns the length of the overall queue datastructure. You must
+// lenLocked returns the length of the overall queue_broadcast datastructure. You must
 // hold the mutex.
 func (q *TransmitLimitedQueue) lenLocked() int {
 	if q.tq == nil {
@@ -396,12 +349,12 @@ func (q *TransmitLimitedQueue) Reset() {
 }
 
 // Prune will retain the maxRetain latest messages, and the rest
-// will be discarded. This can be used to prevent unbounded queue sizes
+// will be discarded. This can be used to prevent unbounded queue_broadcast sizes
 func (q *TransmitLimitedQueue) Prune(maxRetain int) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	// Do nothing if queue size is less than the limit
+	// Do nothing if queue_broadcast size is less than the limit
 	for q.tq.Len() > maxRetain {
 		item := q.tq.Max()
 		if item == nil {

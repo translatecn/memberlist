@@ -1,50 +1,18 @@
 package memberlist
 
+import "github.com/hashicorp/memberlist/queue_broadcast"
+
 /*
 The broadcast mechanism works by maintaining a sorted list of messages to be
 sent out. When a message is to be broadcast, the retransmit count
-is set to zero and appended to the queue. The retransmit count serves
+is set to zero and appended to the queue_broadcast. The retransmit count serves
 as the "priority", ensuring that newer messages get sent first. Once
-a message hits the retransmit limit, it is removed from the queue.
+a message hits the retransmit limit, it is removed from the queue_broadcast.
 
 Additionally, older entries can be invalidated by new messages that
 are contradictory. For example, if we send "{suspect M1 inc: 1},
 then a following {alive M1 inc: 2} will invalidate that message
 */
-
-type memberlistBroadcast struct {
-	node   string
-	msg    []byte
-	notify chan struct{}
-}
-
-func (b *memberlistBroadcast) Invalidates(other Broadcast) bool {
-	// Check if that broadcast is a memberlist type
-	mb, ok := other.(*memberlistBroadcast)
-	if !ok {
-		return false
-	}
-
-	// Invalidates any message about the same node
-	return b.node == mb.node
-}
-
-// Name ok
-func (b *memberlistBroadcast) Name() string {
-	return b.node
-}
-
-// Message OK
-func (b *memberlistBroadcast) Message() []byte {
-	return b.msg
-}
-
-func (b *memberlistBroadcast) Finished() {
-	select {
-	case b.notify <- struct{}{}:
-	default:
-	}
-}
 
 // encodeBroadcast encodes a message and enqueues it for broadcast. Fails
 // silently if there is an encoding error.
@@ -73,7 +41,8 @@ func (m *Members) encodeBroadcastNotify(node string, msgType messageType, msg in
 
 // queueBroadcast 开始广播消息,它将被发送至配置的次数。该消息有可能被未来关于同一节点的消息所废止。
 func (m *Members) queueBroadcast(node string, msg []byte, notify chan struct{}) {
-	b := &memberlistBroadcast{node, msg, notify}
+
+	b := &queue_broadcast.MemberlistBroadcast{Node: node, Msg: msg, Notify: notify}
 	m.broadcasts.QueueBroadcast(b)
 }
 

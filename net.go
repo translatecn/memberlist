@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"github.com/hashicorp/memberlist/pkg"
 	"hash/crc32"
 	"io"
 	"math"
@@ -415,7 +416,7 @@ func (m *Members) handleCommand(buf []byte, from net.Addr, timestamp time.Time) 
 	case deadMsg:
 		fallthrough
 	case userMsg:
-		// Determine the message queue, prioritize alive
+		// Determine the message queue_broadcast, prioritize alive
 		queue := m.lowPriorityMsgQueue
 		if msgType == aliveMsg {
 			queue = m.highPriorityMsgQueue
@@ -424,7 +425,7 @@ func (m *Members) handleCommand(buf []byte, from net.Addr, timestamp time.Time) 
 		// Check for overflow and append if not full
 		m.msgQueueLock.Lock()
 		if queue.Len() >= m.config.HandoffQueueDepth {
-			m.logger.Printf("[WARN] memberlist: handler queue full, dropping message (%d) %s", msgType, LogAddress(from))
+			m.logger.Printf("[WARN] memberlist: handler queue_broadcast full, dropping message (%d) %s", msgType, LogAddress(from))
 		} else {
 			queue.PushBack(msgHandoff{msgType, buf, from})
 		}
@@ -530,7 +531,7 @@ func (m *Members) handlePing(buf []byte, from net.Addr) {
 
 	addr := ""
 	if len(p.SourceAddr) > 0 && p.SourcePort > 0 {
-		addr = joinHostPort(net.IP(p.SourceAddr).String(), p.SourcePort)
+		addr = pkg.JoinHostPort(net.IP(p.SourceAddr).String(), p.SourcePort)
 	} else {
 		addr = from.String()
 	}
@@ -574,7 +575,7 @@ func (m *Members) handleIndirectPing(buf []byte, from net.Addr) {
 	// usable.
 	indAddr := ""
 	if len(ind.SourceAddr) > 0 && ind.SourcePort > 0 {
-		indAddr = joinHostPort(net.IP(ind.SourceAddr).String(), ind.SourcePort)
+		indAddr = pkg.JoinHostPort(net.IP(ind.SourceAddr).String(), ind.SourcePort)
 	} else {
 		indAddr = from.String()
 	}
@@ -597,7 +598,7 @@ func (m *Members) handleIndirectPing(buf []byte, from net.Addr) {
 	m.setAckHandler(localSeqNo, respHandler, m.config.ProbeTimeout)
 
 	// Send the ping.
-	addr := joinHostPort(net.IP(ind.Target).String(), ind.Port)
+	addr := pkg.JoinHostPort(net.IP(ind.Target).String(), ind.Port)
 	a := Address{
 		Addr: addr,
 		Name: ind.Node,

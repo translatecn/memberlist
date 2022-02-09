@@ -325,7 +325,7 @@ func (m *Members) aliveNode(a *alive, notify chan struct{}, bootstrap bool) {
 	}
 }
 
-// OK
+// TODO
 func (m *Members) suspectNode(s *suspect) {
 	m.nodeLock.Lock()
 	defer m.nodeLock.Unlock()

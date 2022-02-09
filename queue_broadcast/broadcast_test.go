@@ -1,4 +1,4 @@
-package memberlist
+package queue_broadcast
 
 import (
 	"reflect"
@@ -6,8 +6,8 @@ import (
 )
 
 func TestMemberlistBroadcast_Invalidates(t *testing.T) {
-	m1 := &memberlistBroadcast{"test", nil, nil}
-	m2 := &memberlistBroadcast{"foo", nil, nil}
+	m1 := &MemberlistBroadcast{"test", nil, nil}
+	m2 := &MemberlistBroadcast{"foo", nil, nil}
 
 	if m1.Invalidates(m2) || m2.Invalidates(m1) {
 		t.Fatalf("unexpected invalidation")
@@ -19,7 +19,7 @@ func TestMemberlistBroadcast_Invalidates(t *testing.T) {
 }
 
 func TestMemberlistBroadcast_Message(t *testing.T) {
-	m1 := &memberlistBroadcast{"test", []byte("test"), nil}
+	m1 := &MemberlistBroadcast{"test", []byte("test"), nil}
 	msg := m1.Message()
 	if !reflect.DeepEqual(msg, []byte("test")) {
 		t.Fatalf("messages do not match")

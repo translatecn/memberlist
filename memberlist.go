@@ -5,6 +5,8 @@ import (
 	"container/list"
 	"errors"
 	"fmt"
+	"github.com/hashicorp/memberlist/pkg"
+	"github.com/hashicorp/memberlist/queue_broadcast"
 	"log"
 	"net"
 	"os"
@@ -74,7 +76,7 @@ type Members struct {
 	ackLock     sync.Mutex
 	ackHandlers map[uint32]*ackHandler
 
-	broadcasts *TransmitLimitedQueue
+	broadcasts *queue_broadcast.TransmitLimitedQueue
 
 	logger *log.Logger
 }
@@ -202,7 +204,7 @@ func newMembers(conf *Config) (*Members, error) {
 		nodeTimers:           make(map[string]*suspicion),
 		awareness:            newAwareness(conf.AwarenessMaxMultiplier), // 感知对象
 		ackHandlers:          make(map[uint32]*ackHandler),
-		broadcasts:           &TransmitLimitedQueue{RetransmitMult: conf.RetransmitMult},
+		broadcasts:           &queue_broadcast.TransmitLimitedQueue{RetransmitMult: conf.RetransmitMult},
 		logger:               logger,
 	}
 	m.broadcasts.NumNodes = func() int {
@@ -260,7 +262,7 @@ func (m *Members) Join(existing []string) (int, error) {
 
 		for _, addr := range addrs {
 			var _ = ipPort{}
-			hp := joinHostPort(addr.ip.String(), addr.port)
+			hp := pkg.JoinHostPort(addr.ip.String(), addr.port)
 			a := Address{Addr: hp, Name: addr.nodeName}
 			if err := m.pushPullNode(a, true); err != nil {
 				err = fmt.Errorf("加入失败 %s: %v", a.Addr, err)
@@ -311,7 +313,7 @@ func (m *Members) tcpLookupIP(host string, defaultPort uint16, nodeName string) 
 		// We support host:port in the DNS config, but need to add the
 		// default port if one is not supplied.
 		server := cc.Servers[0]
-		if !hasPort(server) {
+		if !pkg.HasPort(server) {
 			server = net.JoinHostPort(server, cc.Port)
 		}
 
@@ -358,7 +360,7 @@ func (m *Members) resolveAddr(hostStr string) ([]ipPort, error) {
 	}
 
 	// 这将捕获所提供的端口，或默认的端口。
-	hostStr = ensurePort(hostStr, m.config.BindPort) // 8000
+	hostStr = pkg.EnsurePort(hostStr, m.config.BindPort) // 8000
 	host, sport, err := net.SplitHostPort(hostStr)
 	if err != nil {
 		return nil, err
