@@ -1,14 +1,7 @@
 package memberlist
 
-// AliveDelegate is used to involve a client in processing
-// a node "alive" message. When a node joins, either through
-// a UDP gossip or TCP push/pull, we update the state of
-// that node via an alive message. This can be used to filter
-// a node out and prevent it from being considered a peer
-// using application specific logic.
+// AliveDelegate 是用来让客户端参与处理一个节点的 "alive"消息。通过一个活着的消息更新该节点的状态。
 type AliveDelegate interface {
-	// NotifyAlive is invoked when a message about a live
-	// node is received from the network.  Returning a non-nil
-	// error prevents the node from being considered a peer.
+	// NotifyAlive 从网络中接收到了某个节点的alive信息
 	NotifyAlive(peer *Node) error
 }

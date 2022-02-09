@@ -128,6 +128,7 @@ func (t *NetTransport) FinalAdvertiseAddr(ip string, port int) (net.IP, int, err
 		}
 		advertisePort = port
 	} else {
+		// config.go:177
 		if t.config.BindAddrs[0] == "0.0.0.0" {
 			// 否则，如果我们没有绑定到特定的IP，我们就使用合适的私有IP地址。
 			var err error
@@ -155,16 +156,16 @@ func (t *NetTransport) FinalAdvertiseAddr(ip string, port int) (net.IP, int, err
 	return advertiseAddr, advertisePort, nil
 }
 
-// See Transport.
+// WriteTo 发送数据到addr
 func (t *NetTransport) WriteTo(b []byte, addr string) (time.Time, error) {
 	a := Address{Addr: addr, Name: ""}
 	return t.WriteToAddress(b, a)
 }
 
-// See NodeAwareTransport.
+// WriteToAddress 往a发送数据
 func (t *NetTransport) WriteToAddress(b []byte, a Address) (time.Time, error) {
 	addr := a.Addr
-
+	fmt.Println("ResolveUDPAddr;------>",addr)
 	udpAddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
 		return time.Time{}, err

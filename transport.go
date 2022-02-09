@@ -22,9 +22,7 @@ type Packet struct {
 	Timestamp time.Time
 }
 
-// Transport is used to abstract over communicating with other peers. The packet
-// interface is assumed to be best-effort and the stream interface is assumed to
-// be reliable.
+// Transport 与其他节点通信的接口抽象
 type Transport interface {
 	// FinalAdvertiseAddr 返回所需的IP和端口，以通告到集群的其他部分。
 	FinalAdvertiseAddr(ip string, port int) (net.IP, int, error)
@@ -44,11 +42,8 @@ type Transport interface {
 	// PacketCh 直接消息传递; 读取来自其他节点的消息
 	PacketCh() <-chan *Packet
 
-	// DialTimeout is used to create a connection that allows us to perform
-	// two-way communication with a peer. This is generally more expensive
-	// than packet connections so is used for more infrequent operations
-	// such as anti-entropy or fallback probes if the packet-oriented probe
-	// failed.
+	// DialTimeout 是用来创建一个连接，使我们能够与一个节点进行双向通信。
+	// 这通常比数据包连接更昂贵，所以用于更不频繁的操作，如反熵或在面向数据包的探测失败时进行回退探测。
 	DialTimeout(addr string, timeout time.Duration) (net.Conn, error)
 
 	// StreamCh pull模式、返回一个通道，可以处理来自其他节点传入流连接。
@@ -59,12 +54,10 @@ type Transport interface {
 }
 
 type Address struct {
-	// Addr is a network address as a string, similar to Dial. This usually is
-	// in the form of "host:port". This is required.
+	//网络地址   ip:port
 	Addr string
 
-	// Name is the name of the node being addressed. This is optional but
-	// transports may require it.
+	// 该地址的名字,可选
 	Name string
 }
 

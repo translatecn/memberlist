@@ -130,7 +130,7 @@ type alive struct {
 	Port        uint16
 	Meta        []byte
 
-	// protocol/delegate个版本、按照如下排序
+	// protocol/delegate各个版本、按照如下排序
 	// pmin, pmax, pcur, dmin, dmax, dcur
 	Vsn []uint8
 }

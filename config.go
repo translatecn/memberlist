@@ -81,7 +81,7 @@ type Config struct {
 	DisableTcpPings bool
 
 	// 当UDP ping失败时,关闭TCP ping ;控制单个节点
-	DisableTcpPingsForNode func(nodeName string) bool
+	DisableTcpPingsForNode func(nodeName string) bool `json:"-"`
 
 	// AwarenessMaxMultiplier
 	// 当节点意识到自己可能降级，无法满足可靠探测其他节点的软实时要求时，会增加探测间隔。
@@ -115,10 +115,11 @@ type Config struct {
 	DelegateProtocolMax     uint8
 	Events                  EventDelegate
 
-	Conflict ConflictDelegate // 配置
-	Merge    MergeDelegate    // 合并
-	Ping     PingDelegate     // ping
-	Alive    AliveDelegate    // 探活
+	// 以下四个都没有初始化
+	Conflict ConflictDelegate // 配置 委托/实现
+	Merge    MergeDelegate    // 合并 委托/实现
+	Ping     PingDelegate     // ping 委托/实现
+	Alive    AliveDelegate    // 探活 委托/实现
 
 	// dns 配置文件
 	DNSConfigPath string
@@ -229,7 +230,7 @@ func (c *Config) IPMustBeChecked() bool {
 	return len(c.CIDRsAllowed) > 0
 }
 
-// IPAllowed 检查该IP是否允许
+// IPAllowed 检查该IP是否允许    不允许某些IP节点 加入到集群中
 func (c *Config) IPAllowed(ip net.IP) error {
 	if !c.IPMustBeChecked() {
 		return nil

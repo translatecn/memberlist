@@ -20,12 +20,12 @@ const (
 	StateLeft
 )
 
-// Node represents a node in the cluster.
+// Node 体现了一个集群中节点的状态
 type Node struct {
 	Name  string
 	Addr  net.IP
 	Port  uint16
-	Meta  []byte        // Metadata from the delegate for this node.
+	Meta  []byte        // 节点委托的元信息
 	State NodeStateType // State of the node.
 	PMin  uint8         // Minimum 协议版本 this understands
 	PMax  uint8         // Maximum 协议版本 this understands
@@ -59,7 +59,7 @@ func (n *Node) String() string {
 type nodeState struct {
 	Node
 	Incarnation uint32        // Last known incarnation number
-	State       NodeStateType // Current state
+	State       NodeStateType // 当前的状态
 	StateChange time.Time     // Time last state change happened
 }
 
@@ -909,32 +909,26 @@ func (m *Members) aliveNode(a *alive, notify chan struct{}, bootstrap bool) {
 	defer m.nodeLock.Unlock()
 	state, ok := m.nodeMap[a.Node]
 
-	// It is possible that during a Leave(), there is already an aliveMsg
-	// in-queue to be processed but blocked by the locks above. If we let
-	// that aliveMsg process, it'll cause us to re-join the cluster. This
-	// ensures that we don't.
 	if m.hasLeft() && a.Node == m.config.Name {
+		//如果本节点在Leave()过程中，就不再发送本节点存活的消息了
 		return
 	}
 
 	if len(a.Vsn) >= 3 {
+		//protocol/delegate各个版本
 		pMin := a.Vsn[0]
 		pMax := a.Vsn[1]
 		pCur := a.Vsn[2]
 		if pMin == 0 || pMax == 0 || pMin > pMax {
-			m.logger.Printf("[WARN] memberlist: Ignoring an alive message for '%s' (%v:%d) because 协议版本(s) are wrong: %d <= %d <= %d should be >0", a.Node, net.IP(a.Addr), a.Port, pMin, pCur, pMax)
+			m.logger.Printf("[WARN] memberlist:忽略存活消息 '%s' (%v:%d) 因为协议版本(s)错误: %d <= %d <= %d should be >0", a.Node, net.IP(a.Addr), a.Port, pMin, pCur, pMax)
 			return
 		}
 	}
 
-	// Invoke the Alive delegate if any. This can be used to filter out
-	// alive messages based on custom logic. For example, using a cluster name.
-	// Using a merge delegate is not enough, as it is possible for passive
-	// cluster merging to still occur.
+	// 调用alive实现, 因为是nil不会走这里
 	if m.config.Alive != nil {
 		if len(a.Vsn) < 6 {
-			m.logger.Printf("[WARN] memberlist: ignoring alive message for '%s' (%v:%d) because Vsn is not present",
-				a.Node, net.IP(a.Addr), a.Port)
+			m.logger.Printf("[WARN] memberlist:忽略存活消息'%s' (%v:%d) 因为Vsn长度不对", a.Node, net.IP(a.Addr), a.Port)
 			return
 		}
 		node := &Node{
@@ -950,27 +944,25 @@ func (m *Members) aliveNode(a *alive, notify chan struct{}, bootstrap bool) {
 			DCur: a.Vsn[5],
 		}
 		if err := m.config.Alive.NotifyAlive(node); err != nil {
-			m.logger.Printf("[WARN] memberlist: ignoring alive message for '%s': %s",
-				a.Node, err)
+			m.logger.Printf("[WARN] memberlist: 忽略存活消息'%s': %s", a.Node, err)
 			return
 		}
 	}
 
-	// Check if we've never seen this node before, and if not, then
-	// store this node in our node map.
+	// 检查我们是否以前从未见过这个节点，如果没有，那么就把这个节点储存在我们的节点地图中。
 	var updatesNode bool
 	if !ok {
 		errCon := m.config.IPAllowed(a.Addr)
 		if errCon != nil {
-			m.logger.Printf("[WARN] memberlist: Rejected node %s (%v): %s", a.Node, net.IP(a.Addr), errCon)
+			m.logger.Printf("[WARN] memberlist: 拒绝节点 %s (%v): %s", a.Node, net.IP(a.Addr), errCon)
 			return
 		}
 		state = &nodeState{
 			Node: Node{
-				Name: a.Node,
+				Name: a.Node, // ls-2018.local
 				Addr: a.Addr,
-				Port: a.Port,
-				Meta: a.Meta,
+				Port: a.Port, // 8000
+				Meta: a.Meta, // nil
 			},
 			State: StateDead,
 		}
@@ -982,22 +974,18 @@ func (m *Members) aliveNode(a *alive, notify chan struct{}, bootstrap bool) {
 			state.DMax = a.Vsn[4]
 			state.DCur = a.Vsn[5]
 		}
-
-		// Add to map
+		// ls-2018.local -> NodeState
 		m.nodeMap[a.Node] = state
 
-		// Get a random offset. This is important to ensure
-		// the failure detection bound is low on average. If all
-		// nodes did an append, failure detection bound would be
-		// very high.
-		n := len(m.nodes)
+		// 获得一个随机的偏移量。这对于确保故障检测边界平均较低是很重要的。如果所有的节点都做了追加，故障检测边界会非常高。
+		n := len(m.nodes) // 初始情况下为0
 		offset := randomOffset(n)
 
-		// Add at the end and swap with the node at the offset
 		m.nodes = append(m.nodes, state)
+		//将最后一个节点与随机节点进行交换
 		m.nodes[offset], m.nodes[n] = m.nodes[n], m.nodes[offset]
 
-		// Update numNodes after we've added a new node
+		// 更新节点数
 		atomic.AddUint32(&m.numNodes, 1)
 	} else {
 		// Check if this address is different than the existing node unless the old node is dead.
@@ -1035,18 +1023,23 @@ func (m *Members) aliveNode(a *alive, notify chan struct{}, bootstrap bool) {
 		}
 	}
 
-	// Bail if the incarnation number is older, and this is not about us
 	isLocalNode := state.Name == m.config.Name
 	if a.Incarnation <= state.Incarnation && !isLocalNode && !updatesNode {
+		// 1、alive信息中的Incarnation<=该节点存储的Incarnation
+		// 2、非本机
+		// 3、不允许更新
+		// 同时符合这三个条件,不进行下面逻辑
 		return
 	}
 
-	// Bail if strictly less and this is about us
 	if a.Incarnation < state.Incarnation && isLocalNode {
+		// 1、alive信息中的Incarnation<该节点存储的Incarnation
+		// 2、本机
+		// 同时符合这两个条件,不进行下面逻辑
 		return
 	}
 
-	// Clear out any suspicion timer that may be in effect.
+	// 清理可能生效的任何可疑的计时器。
 	delete(m.nodeTimers, a.Node)
 
 	// Store the old state and meta data

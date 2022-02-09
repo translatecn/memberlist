@@ -36,6 +36,7 @@ var errNodeNamesAreRequired = errors.New("memberlist: 配置需要节点名，�
 
 type Members struct {
 	sequenceNum uint32 // 本地序列号
+	// 周期性的full state sync，使用incarnation number去调协
 	incarnation uint32 // Local incarnation number
 	numNodes    uint32 // 已知节点数(估计)
 	pushPullReq uint32 // push/pull 请求数
@@ -61,7 +62,7 @@ type Members struct {
 
 	nodeLock   sync.RWMutex
 	nodes      []*nodeState          // Known nodes
-	nodeMap    map[string]*nodeState // Maps Node.Name -> NodeState
+	nodeMap    map[string]*nodeState // ls-2018.local -> NodeState
 	nodeTimers map[string]*suspicion // Maps Node.Name -> suspicion timer
 	awareness  *awareness
 
@@ -434,7 +435,7 @@ func (m *Members) setAlive() error {
 	}
 
 	a := alive{
-		Incarnation: m.nextIncarnation(),
+		Incarnation: m.nextIncarnation(),// 1 周期性的full state sync，使用incarnation number去调协
 		Node:        m.config.Name, // 节点名字、唯一
 		Addr:        addr,
 		Port:        uint16(port),
@@ -463,6 +464,7 @@ func (m *Members) setAdvertise(addr net.IP, port int) {
 // 刷新广播地址
 func (m *Members) refreshAdvertise() (net.IP, int, error) {
 	addr, port, err := m.transport.FinalAdvertiseAddr(m.config.AdvertiseAddr, m.config.AdvertisePort) // "" 8000
+	fmt.Println("refreshAdvertise [sockaddr.GetPrivateIP] ---->", addr, port)
 	if err != nil {
 		return nil, 0, fmt.Errorf("获取地址失败: %v", err)
 	}

@@ -36,3 +36,10 @@ for _, member := range list.Members() {
 memberlist 最困难的部分是配置它，因为它有许多可用的旋钮来调整状态传播延迟和收敛时间。 Memberlist
 提供了一个默认配置，它提供了一个良好的起点，但在谨慎方面会犯错误，选择为更高的收敛性而优化的值，但会以更高的带宽使用为代价。 For complete documentation, see the
 associated [Godoc](http://godoc.org/github.com/hashicorp/memberlist).
+
+
+``` 
+UDP gossip 
+TCP push/pull
+
+```

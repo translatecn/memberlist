@@ -51,7 +51,7 @@ func encode(msgType messageType, in interface{}) (*bytes.Buffer, error) {
 	return buf, err
 }
 
-// Returns a random offset between 0 and n
+// 放回0~n之间的随机值
 func randomOffset(n int) int {
 	if n == 0 {
 		return 0

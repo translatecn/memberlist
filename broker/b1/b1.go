@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/hashicorp/memberlist"
+	"github.com/hashicorp/memberlist/broker/dev"
 	"time"
 )
 
@@ -14,9 +15,10 @@ func init() {
 }
 func main() {
 	flag.Parse()
-	conf := memberlist.DefaultLocalConfig()
-	conf.AdvertisePort = port
-	conf.BindPort = port
+	conf := memberlist.DefaultLocalConfig() // 只有默认配置
+	conf.AdvertisePort = port               // 向其他集群成员发布的地址
+	conf.BindPort = port                    //TODO 集群中的节点通过绑定port进行通信
+	dev.Println(conf)
 	list, err := memberlist.Create(conf)
 	if err != nil {
 		panic("Failed to create memberlist: " + err.Error())
