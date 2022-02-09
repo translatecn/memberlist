@@ -1,13 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"github.com/hashicorp/go-sockaddr"
 	"net"
+	"os"
 	"runtime"
 	"strconv"
-	"time"
+	"sync/atomic"
 )
 
 func ma2in() {
@@ -28,10 +30,36 @@ func ma2in() {
 
 func main() {
 	context.Background().Done()
-	runtime.GOMAXPROCS(199999)
-	for i:=0;i<10;i++{
-		go fmt.Println(i)
-	}
-	time.Sleep(time.Second)
+	runtime.GOMAXPROCS(10)
+	//for i := 0; i < 10; i++ {
+	//	go fmt.Println(i)
+	//}
+	//time.Sleep(time.Second)
 	fmt.Println(net.JoinHostPort("f8:ff:c2:29:49:4f", strconv.Itoa(2223)))
+
+	f, err := os.OpenFile("./broker/dev/json.go", os.O_RDONLY, 0777)
+	br := bufio.NewReader(f)
+	peeked, err := br.Peek(1)
+	fmt.Println(peeked, err)
+	peeked, err = br.Peek(2)
+	fmt.Println(peeked, err)
+	peeked, err = br.Peek(br.Buffered())
+	fmt.Println(peeked, err)
+	fmt.Println(^uint32(0))
+	var a uint32 = 4
+	atomic.AddUint32(&a, ^uint32(0))
+	fmt.Println(a)
+
 }
+
+//package dev
+//
+//import (
+//	"encoding/json"
+//	"fmt"
+//)
+//
+//func Println(data interface{})  {
+//	marshal, _ := json.Marshal(data)
+//	fmt.Println(string(marshal))
+//}

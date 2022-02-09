@@ -42,9 +42,8 @@ const (
 )
 
 const (
-	// hasLabelMsg has a deliberately high value so that you can disambiguate
-	// it from the encryptionVersion header which is either 0/1 right now and
-	// also any of the existing messageTypes
+	// hasLabelMsg有一个特意的高值，这样你就可以从encryptionVersion标头（现在是0/1）
+	// 和任何现有的messageTypes中辨别出来。
 	hasLabelMsg messageType = 244
 )
 
@@ -215,39 +214,38 @@ func (m *Members) handleConn(conn net.Conn) {
 	)
 	conn, streamLabel, err = RemoveLabelHeaderFromStream(conn)
 	if err != nil {
-		m.logger.Printf("[错误] memberlist: failed to receive and remove the stream label header: %s %s", err, LogConn(conn))
+		m.logger.Printf("[错误] memberlist: 未能接收和删除流标签头: %s %s", err, LogConn(conn))
 		return
 	}
 
 	if m.config.SkipInboundLabelCheck {
 		if streamLabel != "" {
-			m.logger.Printf("[错误] memberlist: unexpected double stream label header: %s", LogConn(conn))
+			m.logger.Printf("[错误] memberlist: 意外的流标签头: %s", LogConn(conn))
 			return
 		}
-		// Set this from config so that the auth data assertions work below.
 		streamLabel = m.config.Label
 	}
 
 	if m.config.Label != streamLabel {
-		m.logger.Printf("[错误] memberlist: discarding stream with unacceptable label %q: %s", streamLabel, LogConn(conn))
+		m.logger.Printf("[错误] memberlist: 丢弃带有不可接受的标签的流 %q: %s", streamLabel, LogConn(conn))
 		return
 	}
 
 	msgType, bufConn, dec, err := m.readStream(conn, streamLabel)
 	if err != nil {
 		if err != io.EOF {
-			m.logger.Printf("[错误] memberlist: failed to receive: %s %s", err, LogConn(conn))
+			m.logger.Printf("[错误] memberlist: 接受失败: %s %s", err, LogConn(conn))
 
 			resp := errResp{err.Error()}
 			out, err := encode(errMsg, &resp)
 			if err != nil {
-				m.logger.Printf("[错误] memberlist: Failed to encode error response: %s", err)
+				m.logger.Printf("[错误] memberlist: 响应编码失败: %s", err)
 				return
 			}
 
 			err = m.rawSendMsgStream(conn, out.Bytes(), streamLabel)
 			if err != nil {
-				m.logger.Printf("[错误] memberlist: Failed to send error: %s %s", err, LogConn(conn))
+				m.logger.Printf("[错误] memberlist: 发送失败: %s %s", err, LogConn(conn))
 				return
 			}
 		}
@@ -257,27 +255,26 @@ func (m *Members) handleConn(conn net.Conn) {
 	switch msgType {
 	case userMsg:
 		if err := m.readUserMsg(bufConn, dec); err != nil {
-			m.logger.Printf("[错误] memberlist: Failed to receive user message: %s %s", err, LogConn(conn))
+			m.logger.Printf("[错误] memberlist: 接收用户消息失败: %s %s", err, LogConn(conn))
 		}
 	case pushPullMsg:
-		// Increment counter of pending push/pulls
+		// 增加计数器 pending push/pulls
 		numConcurrent := atomic.AddUint32(&m.pushPullReq, 1)
-		defer atomic.AddUint32(&m.pushPullReq, ^uint32(0))
+		defer atomic.AddUint32(&m.pushPullReq, ^uint32(0)) // 减1
 
-		// Check if we have too many open push/pull requests
 		if numConcurrent >= maxPushPullRequests {
-			m.logger.Printf("[错误] memberlist: Too many pending push/pull requests")
+			m.logger.Printf("[错误] memberlist: 太多 pending push/pull requests")
 			return
 		}
 
 		join, remoteNodes, userState, err := m.readRemoteState(bufConn, dec)
 		if err != nil {
-			m.logger.Printf("[错误] memberlist: Failed to read remote state: %s %s", err, LogConn(conn))
+			m.logger.Printf("[错误] memberlist: 读取远端state失败: %s %s", err, LogConn(conn))
 			return
 		}
 
 		if err := m.sendLocalState(conn, join, streamLabel); err != nil {
-			m.logger.Printf("[错误] memberlist: Failed to push local state: %s %s", err, LogConn(conn))
+			m.logger.Printf("[错误] memberlist:发送本地state失败: %s %s", err, LogConn(conn))
 			return
 		}
 
@@ -310,7 +307,7 @@ func (m *Members) handleConn(conn net.Conn) {
 			return
 		}
 	default:
-		m.logger.Printf("[错误] memberlist: Received invalid msgType (%d) %s", msgType, LogConn(conn))
+		m.logger.Printf("[错误] memberlist: 收到了无效的消息类型 (%d) %s", msgType, LogConn(conn))
 	}
 }
 
@@ -873,7 +870,7 @@ func (m *Members) rawSendMsgStream(conn net.Conn, sendBuf []byte, streamLabel st
 	return nil
 }
 
-// sendUserMsg is used to stream a user message to another host.
+// sendUserMsg 是用来将用户信息流转到另一个主机。
 func (m *Members) sendUserMsg(a Address, sendBuf []byte) error {
 	if a.Name == "" && m.config.RequireNodeNames {
 		return errNodeNamesAreRequired
@@ -916,18 +913,21 @@ func (m *Members) sendAndReceiveState(a Address, join bool) ([]pushNodeState, []
 	defer conn.Close()
 	m.logger.Printf("[DEBUG] memberlist: 初始化 push/pull 同步和: %s %s", a.Name, conn.RemoteAddr())
 
-	// 发送自身状态,发送数据本身也设置了TCPTimeout
+	// 发送自身状态,发送数据本身也设置了 TCP Timeout
+	// net.go:234 readStream
 	if err := m.sendLocalState(conn, join, m.config.Label); err != nil {
 		return nil, nil, err
 	}
-
+	//sendLocalState、readStream 一个发、一个收
 	conn.SetDeadline(time.Now().Add(m.config.TCPTimeout))
+	//net.go:276 sendLocalState
 	msgType, bufConn, dec, err := m.readStream(conn, m.config.Label)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	if msgType == errMsg {
+		// 说明sendLocalState 发送过去的数据不对
 		var resp errResp
 		if err := dec.Decode(&resp); err != nil {
 			return nil, nil, err
@@ -935,13 +935,11 @@ func (m *Members) sendAndReceiveState(a Address, join bool) ([]pushNodeState, []
 		return nil, nil, fmt.Errorf("remote error: %v", resp.Error)
 	}
 
-	// Quit if not push/pull
 	if msgType != pushPullMsg {
-		err := fmt.Errorf("received invalid msgType (%d), expected pushPullMsg (%d) %s", msgType, pushPullMsg, LogConn(conn))
+		err := fmt.Errorf("无效的消息类型 (%d), 期待 pushPullMsg (%d) %s", msgType, pushPullMsg, LogConn(conn))
 		return nil, nil, err
 	}
 
-	// Read remote state
 	_, remoteNodes, userState, err := m.readRemoteState(bufConn, dec)
 	return remoteNodes, userState, err
 }
@@ -1049,41 +1047,37 @@ func (m *Members) readStream(conn net.Conn, streamLabel string) (messageType, io
 	return msgType, bufConn, dec, nil
 }
 
-// readRemoteState is used to read the remote state from a connection
+// readRemoteState 从链接中读取远程状态
 func (m *Members) readRemoteState(bufConn io.Reader, dec *codec.Decoder) (bool, []pushNodeState, []byte, error) {
-	// Read the push/pull header
+	// pushPullHeader + localNodes + userData
+	// 读 the push/pull 头
 	var header pushPullHeader
 	if err := dec.Decode(&header); err != nil {
 		return false, nil, nil, err
 	}
 
-	// Allocate space for the transfer
 	remoteNodes := make([]pushNodeState, header.Nodes)
 
-	// Try to decode all the states
+	// localNodes
 	for i := 0; i < header.Nodes; i++ {
 		if err := dec.Decode(&remoteNodes[i]); err != nil {
 			return false, nil, nil, err
 		}
 	}
-
-	// Read the remote user state into a buffer
+	// userData == UserState
 	var userBuf []byte
 	if header.UserStateLen > 0 {
 		userBuf = make([]byte, header.UserStateLen)
 		bytes, err := io.ReadAtLeast(bufConn, userBuf, header.UserStateLen)
 		if err == nil && bytes != header.UserStateLen {
-			err = fmt.Errorf(
-				"Failed to read full user state (%d / %d)",
-				bytes, header.UserStateLen)
+			err = fmt.Errorf("读取userData 失败 (%d / %d)", bytes, header.UserStateLen)
 		}
 		if err != nil {
 			return false, nil, nil, err
 		}
 	}
 
-	// For proto versions < 2, there is no port provided. Mask old
-	// behavior by using the configured port
+	// 当前版本是2 ,下边可以忽略了
 	for idx := range remoteNodes {
 		if m.ProtocolVersion() < 2 || remoteNodes[idx].Port == 0 {
 			remoteNodes[idx].Port = uint16(m.config.BindPort)
@@ -1093,13 +1087,13 @@ func (m *Members) readRemoteState(bufConn io.Reader, dec *codec.Decoder) (bool, 
 	return header.Join, remoteNodes, userBuf, nil
 }
 
-// mergeRemoteState is used to merge the remote state with our local state
+// mergeRemoteState 合并远程数据到本机
 func (m *Members) mergeRemoteState(join bool, remoteNodes []pushNodeState, userBuf []byte) error {
 	if err := m.verifyProtocol(remoteNodes); err != nil {
 		return err
 	}
 
-	// Invoke the merge delegate if any
+	// 如果有的话，调用合并委托。
 	if join && m.config.Merge != nil {
 		nodes := make([]*Node, len(remoteNodes))
 		for idx, n := range remoteNodes {
@@ -1122,10 +1116,8 @@ func (m *Members) mergeRemoteState(join bool, remoteNodes []pushNodeState, userB
 		}
 	}
 
-	// Merge the membership state
 	m.mergeState(remoteNodes)
 
-	// Invoke the delegate for user state
 	if userBuf != nil && m.config.Delegate != nil {
 		m.config.Delegate.MergeRemoteState(userBuf, join)
 	}

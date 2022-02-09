@@ -603,7 +603,7 @@ func TestSendMsg_Piggyback(t *testing.T) {
 			1, 1, 1,
 		},
 	}
-	m.encodeAndBroadcast("rand", aliveMsg, &a)
+	m.encodeBroadcast("rand", aliveMsg, &a)
 
 	udp := listenUDP(t)
 	defer udp.Close()

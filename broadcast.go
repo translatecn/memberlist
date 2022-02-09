@@ -46,9 +46,9 @@ func (b *memberlistBroadcast) Finished() {
 	}
 }
 
-// encodeAndBroadcast encodes a message and enqueues it for broadcast. Fails
+// encodeBroadcast encodes a message and enqueues it for broadcast. Fails
 // silently if there is an encoding error.
-func (m *Members) encodeAndBroadcast(node string, msgType messageType, msg interface{}) {
+func (m *Members) encodeBroadcast(node string, msgType messageType, msg interface{}) {
 	m.encodeBroadcastNotify(node, msgType, msg, nil)
 }
 
@@ -71,9 +71,7 @@ func (m *Members) encodeBroadcastNotify(node string, msgType messageType, msg in
 	}
 }
 
-// queueBroadcast is used to start dissemination of a message. It will be
-// sent up to a configured number of times.
-// 开始广播消息,它将被发送至配置的次数。该消息有可能被未来关于同一节点的消息所废止。
+// queueBroadcast 开始广播消息,它将被发送至配置的次数。该消息有可能被未来关于同一节点的消息所废止。
 func (m *Members) queueBroadcast(node string, msg []byte, notify chan struct{}) {
 	b := &memberlistBroadcast{node, msg, notify}
 	m.broadcasts.QueueBroadcast(b)

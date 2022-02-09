@@ -26,7 +26,7 @@ type Config struct {
 	Label string
 
 	// SkipInboundLabelCheck 跳过检查入站数据包和gossip stream 是否需要有标签前缀。
-	SkipInboundLabelCheck bool
+	SkipInboundLabelCheck bool // 默认是false
 
 	// 绑定的地址和要监听的端口。该端口同时用于UDP和TCP 。假设其他节点在此端口上运行，但它们不需要这样做。
 	BindAddr string
@@ -112,10 +112,10 @@ type Config struct {
 	DelegateProtocolVersion uint8
 	DelegateProtocolMin     uint8
 	DelegateProtocolMax     uint8
-	Events                  EventDelegate
 
-	// 以下五个都没有初始化
-	Delegate                Delegate // 委托
+	// 以下六个都没有初始化
+	Delegate Delegate // 委托
+	Events   EventDelegate
 	Conflict ConflictDelegate // 配置 委托/实现
 	Merge    MergeDelegate    // 合并 委托/实现
 	Ping     PingDelegate     // ping 委托/实现

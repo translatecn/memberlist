@@ -44,9 +44,72 @@ TCP push/pull
 refute gossip
 ```
 
+### Node Change
+```
+
+StateAlive 
+    m.aliveNode         某节点存活
+StateLeft
+    m.deadNode          节点死亡
+StateDead
+    m.suspectNode       质疑节点是否真的dead
+StateSuspect
+    m.suspectNode
+
+```
 
 ```
 m.gossip
 m.pushPull
 m.probeNode
 ```
+
+
+
+### Join
+```
+sendAndReceiveState()
+---> 
+    buf = pushPullMsg (1 byte) + pushPullHeader + localNodes + userData
+    
+    sendBuf = compressMsg (1 byte) + buf
+    
+    sendBuf = encryptMsg (1 byte) + messageLength (4 byte) + sendBuf + stream_label (optional)
+    
+    
+    
+    
+另外:如果有label
+    hasLabelMsg (1 byte) + LabelSize (1 byte) +  LabelData (LabelSize byte) + sendBuf
+    
+    
+```
+
+
+```
+streamLabel 只有在 hasLabelMsg 类型下有
+
+
+
+
+
+pingMsg
+pushPullMsg
+    -   join 时触发
+userMsg
+```
+
+
+
+
+### issue
+1、StateDead与StateLeft的区别
+
+
+
+
+
+
+
+
+

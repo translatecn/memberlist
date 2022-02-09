@@ -76,21 +76,17 @@ func AddLabelHeaderToStream(conn net.Conn, label string) error {
 	return err
 }
 
-// RemoveLabelHeaderFromStream removes any label header from the beginning of
-// the stream if present and returns it along with an updated conn with that
-// header removed.
-//
+// RemoveLabelHeaderFromStream
+// 如果存在的话，从流的开头删除任何标签头，并将其与删除了该头的最新conn一起返回。
 // 请注意，当出现错误时，关闭连接是调用者的责任。
 func RemoveLabelHeaderFromStream(conn net.Conn) (net.Conn, string, error) {
 	br := bufio.NewReader(conn)
 
-	// First check for the type byte.
 	peeked, err := br.Peek(1)
 	if err != nil {
 		if err == io.EOF {
-			// It is safe to return the original net.Conn at this point because
-			// it never contained any data in the first place so we don't have
-			// to splice the buffer into the conn because both are empty.
+			// 此时返回原始的 net.Conn 是安全的，因为它一开始就没有包含任何数据，
+			// 所以我们不需要把缓冲区拼接到 conn 中，因为两者都是空的。
 			return conn, "", nil
 		}
 		return nil, "", err
@@ -101,30 +97,22 @@ func RemoveLabelHeaderFromStream(conn net.Conn) (net.Conn, string, error) {
 		conn, err = newPeekedConnFromBufferedReader(conn, br, 0)
 		return conn, "", err
 	}
-
-	// We are guaranteed to get a size byte as well.
 	peeked, err = br.Peek(2)
 	if err != nil {
 		if err == io.EOF {
-			return nil, "", fmt.Errorf("cannot decode label; stream has been truncated")
+			return nil, "", fmt.Errorf("无法解码标签；流被截断了")
 		}
 		return nil, "", err
 	}
 
 	size := int(peeked[1])
 	if size < 1 {
-		return nil, "", fmt.Errorf("label header cannot be empty when present")
+		return nil, "", fmt.Errorf("标签头存在时不能为空")
 	}
-	// NOTE: we don't have to check this against LabelMaxSize because a byte
-	// already has a max value of 255.
-
-	// Once we know the size we can peek the label as well. Note that since we
-	// are using the default bufio.Reader size of 4096, the entire label header
-	// fits in the initial buffer fill so this should be free.
 	peeked, err = br.Peek(2 + size)
 	if err != nil {
 		if err == io.EOF {
-			return nil, "", fmt.Errorf("cannot decode label; stream has been truncated")
+			return nil, "", fmt.Errorf("无法解码标签；流被截断了")
 		}
 		return nil, "", err
 	}
@@ -139,13 +127,10 @@ func RemoveLabelHeaderFromStream(conn net.Conn) (net.Conn, string, error) {
 	return conn, label, nil
 }
 
-// newPeekedConnFromBufferedReader will splice the buffer contents after the
-// offset into the provided net.Conn and return the result so that the rest of
-// the buffer contents are returned first when reading from the returned
-// peekedConn before moving on to the unbuffered conn contents.
+// newPeekedConnFromBufferedReader 将读取到的数据拼接回conn
+// 先从Peeked读取,再从Conn读
 func newPeekedConnFromBufferedReader(conn net.Conn, br *bufio.Reader, offset int) (*peekedConn, error) {
-	// Extract any of the readahead buffer.
-	peeked, err := br.Peek(br.Buffered())
+	peeked, err := br.Peek(br.Buffered())// 将所有的数据读取出来
 	if err != nil {
 		return nil, err
 	}

@@ -87,10 +87,8 @@ func remainingSuspicionTime(n, k int32, elapsed time.Duration, min, max time.Dur
 	return timeout - elapsed
 }
 
-// Confirm registers that a possibly new peer has also determined the given
-// node is suspect. This returns true if this was new information, and false
-// if it was a duplicate confirmation, or if we've got enough confirmations to
-// hit the minimum.
+// Confirm 注册一个可能的新同行也确定给定节点是可疑的。
+// 如果这是新的信息，则返回true；如果是重复的确认，则返回false；如果我们已经有足够的确认来达到最低限度。
 func (s *suspicion) Confirm(from string) bool {
 	// If we've got enough confirmations then stop accepting them.
 	if atomic.LoadInt32(&s.n) >= s.k {
