@@ -36,13 +36,13 @@ func RemoveLabelHeaderFromPacket(buf []byte) (newBuf []byte, label string, err e
 	}
 
 	// [type:byte] [size:byte] [size bytes]
-	msgType := messageType(buf[0])
-	if msgType != hasLabelMsg {
+	msgType := MessageType(buf[0])
+	if msgType != HasLabelMsg {
 		return buf, "", nil
 	}
 
 	if len(buf) < 2 {
-		return nil, "", fmt.Errorf("cannot decode label; packet has been truncated")
+		return nil, "", fmt.Errorf("cannot Decode label; packet has been truncated")
 	}
 
 	size := int(buf[1])
@@ -51,7 +51,7 @@ func RemoveLabelHeaderFromPacket(buf []byte) (newBuf []byte, label string, err e
 	}
 
 	if len(buf) < 2+size {
-		return nil, "", fmt.Errorf("cannot decode label; packet has been truncated")
+		return nil, "", fmt.Errorf("cannot Decode label; packet has been truncated")
 	}
 
 	label = string(buf[2 : 2+size])
@@ -92,8 +92,8 @@ func RemoveLabelHeaderFromStream(conn net.Conn) (net.Conn, string, error) {
 		return nil, "", err
 	}
 
-	msgType := messageType(peeked[0])
-	if msgType != hasLabelMsg {
+	msgType := MessageType(peeked[0])
+	if msgType != HasLabelMsg {
 		conn, err = newPeekedConnFromBufferedReader(conn, br, 0)
 		return conn, "", err
 	}
@@ -143,7 +143,7 @@ func newPeekedConnFromBufferedReader(conn net.Conn, br *bufio.Reader, offset int
 
 func makeLabelHeader(label string, rest []byte) []byte {
 	newBuf := make([]byte, 2, 2+len(label)+len(rest))
-	newBuf[0] = byte(hasLabelMsg)
+	newBuf[0] = byte(HasLabelMsg)
 	newBuf[1] = byte(len(label))
 	newBuf = append(newBuf, []byte(label)...)
 	if len(rest) > 0 {
@@ -152,7 +152,7 @@ func makeLabelHeader(label string, rest []byte) []byte {
 	return newBuf
 }
 
-func labelOverhead(label string) int {
+func LabelOverhead(label string) int {
 	if label == "" {
 		return 0
 	}

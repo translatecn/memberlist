@@ -1,8 +1,9 @@
-package memberlist
+package test
 
 import (
 	"bytes"
 	"fmt"
+	"github.com/hashicorp/memberlist"
 	"io"
 	"log"
 	"net"
@@ -10,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	sockaddr "github.com/hashicorp/go-sockaddr"
+	sockAddr "github.com/hashicorp/go-sockaddr"
 )
 
 const (
@@ -33,7 +34,7 @@ type NetTransportConfig struct {
 // NetTransport 是一个传输实现，使用无连接的UDP进行数据包操作，并使用临时的TCP连接进行流操作。
 type NetTransport struct {
 	config       *NetTransportConfig
-	packetCh     chan *Packet
+	packetCh     chan *memberlist.Packet
 	streamCh     chan net.Conn
 	logger       *log.Logger
 	wg           sync.WaitGroup
@@ -42,7 +43,7 @@ type NetTransport struct {
 	shutdown     int32
 }
 
-var _ NodeAwareTransport = (*NetTransport)(nil)
+var _ memberlist.NodeAwareTransport = (*NetTransport)(nil)
 
 // NewNetTransport 创建传输端点
 func NewNetTransport(config *NetTransportConfig) (*NetTransport, error) {
@@ -53,7 +54,7 @@ func NewNetTransport(config *NetTransportConfig) (*NetTransport, error) {
 	var ok bool
 	t := NetTransport{
 		config:   config,
-		packetCh: make(chan *Packet),
+		packetCh: make(chan *memberlist.Packet),
 		streamCh: make(chan net.Conn),
 		logger:   config.Logger,
 	}
@@ -67,13 +68,13 @@ func NewNetTransport(config *NetTransportConfig) (*NetTransport, error) {
 
 	// 构建TCP、UDP监听器
 	port := config.BindPort
-	for _, addr := range config.BindAddrs {
-		ip := net.ParseIP(addr)
+	for _, Addr := range config.BindAddrs {
+		ip := net.ParseIP(Addr)
 
 		tcpAddr := &net.TCPAddr{IP: ip, Port: port}
 		tcpLn, err := net.ListenTCP("tcp", tcpAddr)
 		if err != nil {
-			return nil, fmt.Errorf("启动TCP listener失败 %q port %d: %v", addr, port, err)
+			return nil, fmt.Errorf("启动TCP listener失败 %q Port %d: %v", Addr, port, err)
 		}
 		t.tcpListeners = append(t.tcpListeners, tcpLn)
 
@@ -85,7 +86,7 @@ func NewNetTransport(config *NetTransportConfig) (*NetTransport, error) {
 		udpAddr := &net.UDPAddr{IP: ip, Port: port}
 		udpLn, err := net.ListenUDP("udp", udpAddr)
 		if err != nil {
-			return nil, fmt.Errorf("启动UDP listener失败 %q port %d: %v", addr, port, err)
+			return nil, fmt.Errorf("启动UDP listener失败 %q Port %d: %v", Addr, port, err)
 		}
 		if err := setUDPRecvBuf(udpLn); err != nil {
 			return nil, fmt.Errorf("调整UDP缓冲区大小失败: %v", err)
@@ -107,7 +108,6 @@ func NewNetTransport(config *NetTransportConfig) (*NetTransport, error) {
 
 // GetAutoBindPort 返回一个随机端口
 func (t *NetTransport) GetAutoBindPort() int {
-	fmt.Println("GetAutoBindPort------>:", t.tcpListeners[0].Addr().(*net.TCPAddr).Port)
 	return t.tcpListeners[0].Addr().(*net.TCPAddr).Port
 }
 
@@ -127,11 +127,11 @@ func (t *NetTransport) FinalAdvertiseAddr(ip string, port int) (net.IP, int, err
 		}
 		advertisePort = port
 	} else {
-		// config.go:177
+		// Config.go:177
 		if t.config.BindAddrs[0] == "0.0.0.0" {
 			// 否则，如果我们没有绑定到特定的IP，我们就使用合适的私有IP地址。
 			var err error
-			ip, err = sockaddr.GetPrivateIP()
+			ip, err = sockAddr.GetPrivateIP()
 			if err != nil {
 				return nil, 0, fmt.Errorf("获取通信地址失败: %v", err)
 			}
@@ -155,17 +155,16 @@ func (t *NetTransport) FinalAdvertiseAddr(ip string, port int) (net.IP, int, err
 	return advertiseAddr, advertisePort, nil
 }
 
-// WriteTo 发送数据到addr
-func (t *NetTransport) WriteTo(b []byte, addr string) (time.Time, error) {
-	a := Address{Addr: addr, Name: ""}
+// WriteTo 发送数据到Addr
+func (t *NetTransport) WriteTo(b []byte, Addr string) (time.Time, error) {
+	a := memberlist.Address{Addr: Addr, Name: ""}
 	return t.WriteToAddress(b, a)
 }
 
 // WriteToAddress 往a发送数据
-func (t *NetTransport) WriteToAddress(b []byte, a Address) (time.Time, error) {
-	addr := a.Addr
-	fmt.Println("ResolveUDPAddr;------>", addr)
-	udpAddr, err := net.ResolveUDPAddr("udp", addr)
+func (t *NetTransport) WriteToAddress(b []byte, a memberlist.Address) (time.Time, error) {
+	Addr := a.Addr
+	udpAddr, err := net.ResolveUDPAddr("udp", Addr)
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -179,12 +178,12 @@ func (t *NetTransport) WriteToAddress(b []byte, a Address) (time.Time, error) {
 }
 
 // See Transport.
-func (t *NetTransport) PacketCh() <-chan *Packet {
+func (t *NetTransport) PacketCh() <-chan *memberlist.Packet {
 	return t.packetCh
 }
 
 // See IngestionAwareTransport.
-func (t *NetTransport) IngestPacket(conn net.Conn, addr net.Addr, now time.Time, shouldClose bool) error {
+func (t *NetTransport) IngestPacket(conn net.Conn, Addr net.Addr, now time.Time, shouldClose bool) error {
 	if shouldClose {
 		defer conn.Close()
 	}
@@ -199,30 +198,30 @@ func (t *NetTransport) IngestPacket(conn net.Conn, addr net.Addr, now time.Time,
 	// message. This is checked elsewhere for writes coming in directly from
 	// the UDP socket.
 	if n := buf.Len(); n < 1 {
-		return fmt.Errorf("packet too short (%d bytes) %s", n, LogAddress(addr))
+		return fmt.Errorf("packet too short (%d bytes) %s", n, memberlist.LogAddress(Addr))
 	}
 
 	// Inject the packet.
-	t.packetCh <- &Packet{
+	t.packetCh <- &memberlist.Packet{
 		Buf:       buf.Bytes(),
-		From:      addr,
+		From:      Addr,
 		Timestamp: now,
 	}
 	return nil
 }
 
 // DialTimeout 与a建联，设置了超时时间
-func (t *NetTransport) DialTimeout(addr string, timeout time.Duration) (net.Conn, error) {
-	a := Address{Addr: addr, Name: ""}
+func (t *NetTransport) DialTimeout(Addr string, timeout time.Duration) (net.Conn, error) {
+	a := memberlist.Address{Addr: Addr, Name: ""}
 	return t.DialAddressTimeout(a, timeout)
 }
 
 // DialAddressTimeout 与a建联，设置了超时时间
-func (t *NetTransport) DialAddressTimeout(a Address, timeout time.Duration) (net.Conn, error) {
-	addr := a.Addr
+func (t *NetTransport) DialAddressTimeout(a memberlist.Address, timeout time.Duration) (net.Conn, error) {
+	Addr := a.Addr
 
 	dialer := net.Dialer{Timeout: timeout}
-	return dialer.Dial("tcp", addr)
+	return dialer.Dial("tcp", Addr)
 }
 
 // StreamCh 返回新建立的流连接
@@ -298,7 +297,7 @@ func (t *NetTransport) udpListen(udpLn *net.UDPConn) {
 		// Do a blocking read into a fresh buffer. Grab a time stamp as
 		// close as possible to the I/O.
 		buf := make([]byte, udpPacketBufSize)
-		n, addr, err := udpLn.ReadFrom(buf)
+		n, Addr, err := udpLn.ReadFrom(buf)
 		ts := time.Now()
 		if err != nil {
 			if s := atomic.LoadInt32(&t.shutdown); s == 1 {
@@ -313,13 +312,13 @@ func (t *NetTransport) udpListen(udpLn *net.UDPConn) {
 		// proper message.
 		if n < 1 {
 			t.logger.Printf("[错误] memberlist: UDP packet too short (%d bytes) %s",
-				len(buf), LogAddress(addr))
+				len(buf), memberlist.LogAddress(Addr))
 			continue
 		}
 
-		t.packetCh <- &Packet{
+		t.packetCh <- &memberlist.Packet{
 			Buf:       buf[:n],
-			From:      addr,
+			From:      Addr,
 			Timestamp: ts,
 		}
 	}

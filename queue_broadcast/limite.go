@@ -204,7 +204,7 @@ func (q *TransmitLimitedQueue) getTransmitRange() (minTransmit, maxTransmit int)
 	return min, max
 }
 
-// GetBroadcasts is used to get a number of broadcasts, up to a byte limit
+// GetBroadcasts is used to get a number of Broadcasts, up to a byte limit
 // and applying a per-message overhead as provided.
 func (q *TransmitLimitedQueue) GetBroadcasts(overhead, limit int) [][]byte {
 	q.mu.Lock()

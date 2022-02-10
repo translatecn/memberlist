@@ -12,7 +12,7 @@ type Packet struct {
 	// Buf has the raw contents of the packet.
 	Buf []byte
 
-	// From has the address of the peer. This is an actual net.Addr so we
+	// From has the Address of the peer. This is an actual net.Addr so we
 	// can expose some concrete details about incoming packets.
 	From net.Addr
 
@@ -28,23 +28,23 @@ type Transport interface {
 	FinalAdvertiseAddr(ip string, port int) (net.IP, int, error)
 
 	// WriteTo is a packet-oriented interface that fires off the given
-	// payload to the given address in a connectionless fashion. This should
+	// payload to the given Address in a connectionless fashion. This should
 	// return a time stamp that's as close as possible to when the packet
 	// was transmitted to help make accurate RTT measurements during probes.
 	//
 	// This is similar to net.PacketConn, though we didn't want to expose
 	// that full set of required methods to keep assumptions about the
-	// underlying plumbing to a minimum. We also treat the address here as a
+	// underlying plumbing to a minimum. We also treat the Address here as a
 	// string, similar to Dial, so it's network neutral, so this usually is
-	// in the form of "host:port".
-	WriteTo(b []byte, addr string) (time.Time, error)
+	// in the form of "host:Port".
+	WriteTo(b []byte, Addr string) (time.Time, error)
 
 	// PacketCh 直接消息传递; 读取来自其他节点的消息
 	PacketCh() <-chan *Packet
 
 	// DialTimeout 是用来创建一个连接，使我们能够与一个节点进行双向通信。
 	// 这通常比数据包连接更昂贵，所以用于更不频繁的操作，如反熵或在面向数据包的探测失败时进行回退探测。
-	DialTimeout(addr string, timeout time.Duration) (net.Conn, error)
+	DialTimeout(Addr string, timeout time.Duration) (net.Conn, error)
 
 	// StreamCh pull模式、返回一个通道，可以处理来自其他节点传入流连接。
 	StreamCh() <-chan net.Conn
@@ -54,7 +54,7 @@ type Transport interface {
 }
 
 type Address struct {
-	//网络地址   ip:port
+	//网络地址   IP:Port
 	Addr string
 	// 该地址的名字,可选
 	Name string
@@ -73,14 +73,14 @@ func (a *Address) String() string {
 // version. Define the interface locally instead of referencing this exported
 // interface.
 type IngestionAwareTransport interface {
-	IngestPacket(conn net.Conn, addr net.Addr, now time.Time, shouldClose bool) error
+	IngestPacket(conn net.Conn, Addr net.Addr, now time.Time, shouldClose bool) error
 	IngestStream(conn net.Conn) error
 }
 
 type NodeAwareTransport interface {
 	Transport
-	WriteToAddress(b []byte, addr Address) (time.Time, error)
-	DialAddressTimeout(addr Address, timeout time.Duration) (net.Conn, error)
+	WriteToAddress(b []byte, Addr Address) (time.Time, error)
+	DialAddressTimeout(Addr Address, timeout time.Duration) (net.Conn, error)
 }
 
 // shim 垫片
@@ -90,12 +90,12 @@ type shimNodeAwareTransport struct {
 
 var _ NodeAwareTransport = (*shimNodeAwareTransport)(nil)
 
-func (t *shimNodeAwareTransport) WriteToAddress(b []byte, addr Address) (time.Time, error) {
-	return t.WriteTo(b, addr.Addr)
+func (t *shimNodeAwareTransport) WriteToAddress(b []byte, Addr Address) (time.Time, error) {
+	return t.WriteTo(b, Addr.Addr)
 }
 
-func (t *shimNodeAwareTransport) DialAddressTimeout(addr Address, timeout time.Duration) (net.Conn, error) {
-	return t.DialTimeout(addr.Addr, timeout)
+func (t *shimNodeAwareTransport) DialAddressTimeout(Addr Address, timeout time.Duration) (net.Conn, error) {
+	return t.DialTimeout(Addr.Addr, timeout)
 }
 
 type labelWrappedTransport struct {
@@ -105,26 +105,26 @@ type labelWrappedTransport struct {
 
 var _ NodeAwareTransport = (*labelWrappedTransport)(nil)
 
-func (t *labelWrappedTransport) WriteToAddress(buf []byte, addr Address) (time.Time, error) {
+func (t *labelWrappedTransport) WriteToAddress(buf []byte, Addr Address) (time.Time, error) {
 	var err error
 	buf, err = AddLabelHeaderToPacket(buf, t.label)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("failed to add label header to packet: %w", err)
 	}
-	return t.NodeAwareTransport.WriteToAddress(buf, addr)
+	return t.NodeAwareTransport.WriteToAddress(buf, Addr)
 }
 
-func (t *labelWrappedTransport) WriteTo(buf []byte, addr string) (time.Time, error) {
+func (t *labelWrappedTransport) WriteTo(buf []byte, Addr string) (time.Time, error) {
 	var err error
 	buf, err = AddLabelHeaderToPacket(buf, t.label)
 	if err != nil {
 		return time.Time{}, err
 	}
-	return t.NodeAwareTransport.WriteTo(buf, addr)
+	return t.NodeAwareTransport.WriteTo(buf, Addr)
 }
 
-func (t *labelWrappedTransport) DialAddressTimeout(addr Address, timeout time.Duration) (net.Conn, error) {
-	conn, err := t.NodeAwareTransport.DialAddressTimeout(addr, timeout)
+func (t *labelWrappedTransport) DialAddressTimeout(Addr Address, timeout time.Duration) (net.Conn, error) {
+	conn, err := t.NodeAwareTransport.DialAddressTimeout(Addr, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -134,8 +134,8 @@ func (t *labelWrappedTransport) DialAddressTimeout(addr Address, timeout time.Du
 	return conn, nil
 }
 
-func (t *labelWrappedTransport) DialTimeout(addr string, timeout time.Duration) (net.Conn, error) {
-	conn, err := t.NodeAwareTransport.DialTimeout(addr, timeout)
+func (t *labelWrappedTransport) DialTimeout(Addr string, timeout time.Duration) (net.Conn, error) {
+	conn, err := t.NodeAwareTransport.DialTimeout(Addr, timeout)
 	if err != nil {
 		return nil, err
 	}

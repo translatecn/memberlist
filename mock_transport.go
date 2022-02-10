@@ -10,42 +10,42 @@ import (
 )
 
 // MockNetwork is used as a factory that produces MockTransport instances which
-// are uniquely addressed and wired up to talk to each other.
+// are uniquely Addressed and wired up to talk to each other.
 type MockNetwork struct {
-	transportsByAddr map[string]*MockTransport
-	transportsByName map[string]*MockTransport
+	TransportsByAddr map[string]*MockTransport
+	TransportsByName map[string]*MockTransport
 	port             int
 }
 
-// NewTransport returns a new MockTransport with a unique address, wired up to
-// talk to the other transports in the MockNetwork.
+// NewTransport returns a new MockTransport with a unique Address, wired up to
+// talk to the other Transports in the MockNetwork.
 func (n *MockNetwork) NewTransport(name string) *MockTransport {
 	n.port += 1
-	addr := fmt.Sprintf("127.0.0.1:%d", n.port)
-	transport := &MockTransport{
+	Addr := fmt.Sprintf("127.0.0.1:%d", n.port)
+	Transport := &MockTransport{
 		net:      n,
-		addr:     &MockAddress{addr, name},
+		Addr:     &MockAddress{Addr, name},
 		packetCh: make(chan *Packet),
 		streamCh: make(chan net.Conn),
 	}
 
-	if n.transportsByAddr == nil {
-		n.transportsByAddr = make(map[string]*MockTransport)
+	if n.TransportsByAddr == nil {
+		n.TransportsByAddr = make(map[string]*MockTransport)
 	}
-	n.transportsByAddr[addr] = transport
+	n.TransportsByAddr[Addr] = Transport
 
-	if n.transportsByName == nil {
-		n.transportsByName = make(map[string]*MockTransport)
+	if n.TransportsByName == nil {
+		n.TransportsByName = make(map[string]*MockTransport)
 	}
-	n.transportsByName[name] = transport
+	n.TransportsByName[name] = Transport
 
-	return transport
+	return Transport
 }
 
 // MockAddress is a wrapper which adds the net.Addr interface to our mock
-// address scheme.
+// Address scheme.
 type MockAddress struct {
-	addr string
+	Addr string
 	name string
 }
 
@@ -56,13 +56,13 @@ func (a *MockAddress) Network() string {
 
 // See net.Addr.
 func (a *MockAddress) String() string {
-	return a.addr
+	return a.Addr
 }
 
-// MockTransport directly plumbs messages to other transports its MockNetwork.
+// MockTransport directly plumbs messages to other Transports its MockNetwork.
 type MockTransport struct {
 	net      *MockNetwork
-	addr     *MockAddress
+	Addr     *MockAddress
 	packetCh chan *Packet
 	streamCh chan net.Conn
 }
@@ -71,7 +71,7 @@ var _ NodeAwareTransport = (*MockTransport)(nil)
 
 // See Transport.
 func (t *MockTransport) FinalAdvertiseAddr(string, int) (net.IP, int, error) {
-	host, portStr, err := net.SplitHostPort(t.addr.String())
+	host, portStr, err := net.SplitHostPort(t.Addr.String())
 	if err != nil {
 		return nil, 0, err
 	}
@@ -90,8 +90,8 @@ func (t *MockTransport) FinalAdvertiseAddr(string, int) (net.IP, int, error) {
 }
 
 // See Transport.
-func (t *MockTransport) WriteTo(b []byte, addr string) (time.Time, error) {
-	a := Address{Addr: addr, Name: ""}
+func (t *MockTransport) WriteTo(b []byte, Addr string) (time.Time, error) {
+	a := Address{Addr: Addr, Name: ""}
 	return t.WriteToAddress(b, a)
 }
 
@@ -105,7 +105,7 @@ func (t *MockTransport) WriteToAddress(b []byte, a Address) (time.Time, error) {
 	now := time.Now()
 	dest.packetCh <- &Packet{
 		Buf:       b,
-		From:      t.addr,
+		From:      t.Addr,
 		Timestamp: now,
 	}
 	return now, nil
@@ -117,7 +117,7 @@ func (t *MockTransport) PacketCh() <-chan *Packet {
 }
 
 // See NodeAwareTransport.
-func (t *MockTransport) IngestPacket(conn net.Conn, addr net.Addr, now time.Time, shouldClose bool) error {
+func (t *MockTransport) IngestPacket(conn net.Conn, Addr net.Addr, now time.Time, shouldClose bool) error {
 	if shouldClose {
 		defer conn.Close()
 	}
@@ -132,21 +132,21 @@ func (t *MockTransport) IngestPacket(conn net.Conn, addr net.Addr, now time.Time
 	// message. This is checked elsewhere for writes coming in directly from
 	// the UDP socket.
 	if n := buf.Len(); n < 1 {
-		return fmt.Errorf("packet too short (%d bytes) %s", n, LogAddress(addr))
+		return fmt.Errorf("packet too short (%d bytes) %s", n, LogAddress(Addr))
 	}
 
 	// Inject the packet.
 	t.packetCh <- &Packet{
 		Buf:       buf.Bytes(),
-		From:      addr,
+		From:      Addr,
 		Timestamp: now,
 	}
 	return nil
 }
 
 // See Transport.
-func (t *MockTransport) DialTimeout(addr string, timeout time.Duration) (net.Conn, error) {
-	a := Address{Addr: addr, Name: ""}
+func (t *MockTransport) DialTimeout(Addr string, timeout time.Duration) (net.Conn, error) {
+	a := Address{Addr: Addr, Name: ""}
 	return t.DialAddressTimeout(a, timeout)
 }
 
@@ -184,9 +184,9 @@ func (t *MockTransport) getPeer(a Address) (*MockTransport, error) {
 		ok   bool
 	)
 	if a.Name != "" {
-		dest, ok = t.net.transportsByName[a.Name]
+		dest, ok = t.net.TransportsByName[a.Name]
 	} else {
-		dest, ok = t.net.transportsByAddr[a.Addr]
+		dest, ok = t.net.TransportsByAddr[a.Addr]
 	}
 	if !ok {
 		return nil, fmt.Errorf("No route to %s", a)

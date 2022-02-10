@@ -1,7 +1,8 @@
-package memberlist
+package test
 
 import (
 	"bytes"
+	"github.com/hashicorp/memberlist"
 	"testing"
 )
 
@@ -13,7 +14,7 @@ var TestKeys [][]byte = [][]byte{
 
 func TestKeyring_EmptyRing(t *testing.T) {
 	// Keyrings can be created with no encryption keys (disabled encryption)
-	keyring, err := NewKeyring(nil, nil)
+	keyring, err := memberlist.NewKeyring(nil, nil)
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}
@@ -26,7 +27,7 @@ func TestKeyring_EmptyRing(t *testing.T) {
 
 func TestKeyring_PrimaryOnly(t *testing.T) {
 	// Keyrings can be created using only a primary key
-	keyring, err := NewKeyring(nil, TestKeys[0])
+	keyring, err := memberlist.NewKeyring(nil, TestKeys[0])
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}
@@ -38,7 +39,7 @@ func TestKeyring_PrimaryOnly(t *testing.T) {
 }
 
 func TestKeyring_GetPrimaryKey(t *testing.T) {
-	keyring, err := NewKeyring(TestKeys, TestKeys[1])
+	keyring, err := memberlist.NewKeyring(TestKeys, TestKeys[1])
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}
@@ -51,7 +52,7 @@ func TestKeyring_GetPrimaryKey(t *testing.T) {
 }
 
 func TestKeyring_AddRemoveUse(t *testing.T) {
-	keyring, err := NewKeyring(nil, TestKeys[1])
+	keyring, err := memberlist.NewKeyring(nil, TestKeys[1])
 	if err != nil {
 		t.Fatalf("err :%s", err)
 	}
@@ -105,19 +106,19 @@ func TestKeyRing_MultiKeyEncryptDecrypt(t *testing.T) {
 	plaintext := []byte("this is a plain text message")
 	extra := []byte("random data")
 
-	keyring, err := NewKeyring(TestKeys, TestKeys[0])
+	keyring, err := memberlist.NewKeyring(TestKeys, TestKeys[0])
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}
 
 	// First encrypt using the primary key and make sure we can decrypt
 	var buf bytes.Buffer
-	err = encryptPayload(1, TestKeys[0], plaintext, extra, &buf)
+	err = memberlist.EncryptPayload(1, TestKeys[0], plaintext, extra, &buf)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
 
-	msg, err := decryptPayload(keyring.GetKeys(), buf.Bytes(), extra)
+	msg, err := memberlist.DecryptPayload(keyring.GetKeys(), buf.Bytes(), extra)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -128,12 +129,12 @@ func TestKeyRing_MultiKeyEncryptDecrypt(t *testing.T) {
 
 	// Now encrypt with a secondary key and try decrypting again.
 	buf.Reset()
-	err = encryptPayload(1, TestKeys[2], plaintext, extra, &buf)
+	err = memberlist.EncryptPayload(1, TestKeys[2], plaintext, extra, &buf)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
 
-	msg, err = decryptPayload(keyring.GetKeys(), buf.Bytes(), extra)
+	msg, err = memberlist.DecryptPayload(keyring.GetKeys(), buf.Bytes(), extra)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -147,7 +148,7 @@ func TestKeyRing_MultiKeyEncryptDecrypt(t *testing.T) {
 		t.Fatalf("err: %s", err)
 	}
 
-	msg, err = decryptPayload(keyring.GetKeys(), buf.Bytes(), extra)
+	msg, err = memberlist.DecryptPayload(keyring.GetKeys(), buf.Bytes(), extra)
 	if err == nil {
 		t.Fatalf("Expected no keys to decrypt message")
 	}

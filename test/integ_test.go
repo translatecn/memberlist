@@ -1,41 +1,39 @@
-package memberlist
+package test
 
 import (
 	"fmt"
+	"github.com/hashicorp/memberlist"
 	"log"
 	"os"
 	"testing"
 	"time"
 )
 
-// CheckInteg will skip a test if integration testing is not enabled.
+// CheckInteg 如果没有启用集成测试，将跳过一个测试。
 func CheckInteg(t *testing.T) {
 	if !IsInteg() {
 		t.SkipNow()
 	}
 }
 
-// IsInteg returns a boolean telling you if we're in integ testing mode.
 func IsInteg() bool {
 	return os.Getenv("INTEG_TESTS") != ""
 }
 
-// Tests the memberlist by creating a cluster of 100 nodes
-// and checking that we get strong convergence of changes.
 func TestMemberlist_Integ(t *testing.T) {
-	CheckInteg(t)
+	//CheckInteg(t)
 
 	num := 16
-	var members []*Members
+	var members []*memberlist.Members
 
 	secret := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
-	eventCh := make(chan NodeEvent, num)
+	eventCh := make(chan memberlist.NodeEvent, num)
 
-	addr := "127.0.0.1"
+	Addr := "127.0.0.1"
 	for i := 0; i < num; i++ {
-		c := DefaultLANConfig()
-		c.Name = fmt.Sprintf("%s:%d", addr, 12345+i)
-		c.BindAddr = addr
+		c := memberlist.DefaultLANConfig()
+		c.Name = fmt.Sprintf("%s:%d", Addr, 12345+i)
+		c.BindAddr = Addr
 		c.BindPort = 12345 + i
 		c.ProbeInterval = 20 * time.Millisecond
 		c.ProbeTimeout = 100 * time.Millisecond
@@ -45,10 +43,10 @@ func TestMemberlist_Integ(t *testing.T) {
 		c.Logger = log.New(os.Stderr, c.Name, log.LstdFlags)
 
 		if i == 0 {
-			c.Events = &ChannelEventDelegate{eventCh}
+			c.Events = &memberlist.ChannelEventDelegate{eventCh}
 		}
 
-		m, err := Create(c)
+		m, err := memberlist.Create(c)
 		if err != nil {
 			t.Fatalf("unexpected err: %s", err)
 		}
@@ -58,20 +56,19 @@ func TestMemberlist_Integ(t *testing.T) {
 
 		if i > 0 {
 			last := members[i-1]
-			num, err := m.Join([]string{last.config.Name + "/" + last.config.Name})
+			num, err := m.Join([]string{last.Config.Name + "/" + last.Config.Name})
 			if num == 0 || err != nil {
 				t.Fatalf("unexpected err: %s", err)
 			}
 		}
 	}
 
-	// Wait and print debug info
-	breakTimer := time.After(250 * time.Millisecond)
+	breakTimer := time.After(1 * time.Second)
 WAIT:
 	for {
 		select {
 		case e := <-eventCh:
-			if e.Event == NodeJoin {
+			if e.Event == memberlist.NodeJoin {
 				t.Logf("[DEBUG] Node join: %v (%d)", *e.Node, members[0].NumMembers())
 			} else {
 				t.Logf("[DEBUG] Node leave: %v (%d)", *e.Node, members[0].NumMembers())
@@ -84,8 +81,7 @@ WAIT:
 	for idx, m := range members {
 		got := m.NumMembers()
 		if got != num {
-			t.Errorf("bad num members at idx %d. Expected %d. Got %d.",
-				idx, num, got)
+			t.Errorf("bad num members at idx %d. Expected %d. Got %d.", idx, num, got)
 		}
 	}
 }

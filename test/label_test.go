@@ -1,7 +1,8 @@
-package memberlist
+package test
 
 import (
 	"bytes"
+	"github.com/hashicorp/memberlist"
 	"io"
 	"net"
 	"strings"
@@ -19,7 +20,7 @@ func TestAddLabelHeaderToPacket(t *testing.T) {
 	}
 
 	run := func(t *testing.T, tc testcase) {
-		got, err := AddLabelHeaderToPacket(tc.buf, tc.label)
+		got, err := memberlist.AddLabelHeaderToPacket(tc.buf, tc.label)
 		if tc.expectErr != "" {
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tc.expectErr)
@@ -40,12 +41,12 @@ func TestAddLabelHeaderToPacket(t *testing.T) {
 		"nil buf with label": testcase{
 			buf:          nil,
 			label:        "foo",
-			expectPacket: append([]byte{byte(hasLabelMsg), 3}, []byte("foo")...),
+			expectPacket: append([]byte{byte(memberlist.HasLabelMsg), 3}, []byte("foo")...),
 		},
 		"message with label": testcase{
 			buf:          []byte("something"),
 			label:        "foo",
-			expectPacket: append([]byte{byte(hasLabelMsg), 3}, []byte("foosomething")...),
+			expectPacket: append([]byte{byte(memberlist.HasLabelMsg), 3}, []byte("foosomething")...),
 		},
 		"message with no label": testcase{
 			buf:          []byte("something"),
@@ -55,7 +56,7 @@ func TestAddLabelHeaderToPacket(t *testing.T) {
 		"message with almost too long label": testcase{
 			buf:          []byte("something"),
 			label:        longLabel,
-			expectPacket: append([]byte{byte(hasLabelMsg), 255}, []byte(longLabel+"something")...),
+			expectPacket: append([]byte{byte(memberlist.HasLabelMsg), 255}, []byte(longLabel+"something")...),
 		},
 		"label too long by one byte": testcase{
 			buf:       []byte("something"),
@@ -80,7 +81,7 @@ func TestRemoveLabelHeaderFromPacket(t *testing.T) {
 	}
 
 	run := func(t *testing.T, tc testcase) {
-		gotBuf, gotLabel, err := RemoveLabelHeaderFromPacket(tc.buf)
+		gotBuf, gotLabel, err := memberlist.RemoveLabelHeaderFromPacket(tc.buf)
 		if tc.expectErr != "" {
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tc.expectErr)
@@ -98,50 +99,50 @@ func TestRemoveLabelHeaderFromPacket(t *testing.T) {
 			expectPacket: []byte{},
 		},
 		"ping with no label": testcase{
-			buf:          buildBuffer(t, pingMsg, "blah"),
+			buf:          buildBuffer(t, memberlist.PingMsg, "blah"),
 			expectLabel:  "",
-			expectPacket: buildBuffer(t, pingMsg, "blah"),
+			expectPacket: buildBuffer(t, memberlist.PingMsg, "blah"),
 		},
 		"error with no label": testcase{ // 2021-10: largest standard message type
-			buf:          buildBuffer(t, errMsg, "blah"),
+			buf:          buildBuffer(t, memberlist.ErrMsg, "blah"),
 			expectLabel:  "",
-			expectPacket: buildBuffer(t, errMsg, "blah"),
+			expectPacket: buildBuffer(t, memberlist.ErrMsg, "blah"),
 		},
 		"v1 encrypt with no label": testcase{ // 2021-10: highest encryption version
-			buf:          buildBuffer(t, maxEncryptionVersion, "blah"),
+			buf:          buildBuffer(t, memberlist.MaxEncryptionVersion, "blah"),
 			expectLabel:  "",
-			expectPacket: buildBuffer(t, maxEncryptionVersion, "blah"),
+			expectPacket: buildBuffer(t, memberlist.MaxEncryptionVersion, "blah"),
 		},
 		"buf too small for label": testcase{
-			buf:       buildBuffer(t, hasLabelMsg, "x"),
+			buf:       buildBuffer(t, memberlist.HasLabelMsg, "x"),
 			expectErr: `cannot decode label; packet has been truncated`,
 		},
 		"buf too small for label size": testcase{
-			buf:       buildBuffer(t, hasLabelMsg),
+			buf:       buildBuffer(t, memberlist.HasLabelMsg),
 			expectErr: `cannot decode label; packet has been truncated`,
 		},
 		"label empty": testcase{
-			buf:       buildBuffer(t, hasLabelMsg, 0, "x"),
+			buf:       buildBuffer(t, memberlist.HasLabelMsg, 0, "x"),
 			expectErr: `label header cannot be empty when present`,
 		},
 		"label truncated": testcase{
-			buf:       buildBuffer(t, hasLabelMsg, 2, "x"),
+			buf:       buildBuffer(t, memberlist.HasLabelMsg, 2, "x"),
 			expectErr: `cannot decode label; packet has been truncated`,
 		},
 		"ping with label": testcase{
-			buf:          buildBuffer(t, hasLabelMsg, 3, "abc", pingMsg, "blah"),
+			buf:          buildBuffer(t, memberlist.HasLabelMsg, 3, "abc", memberlist.PingMsg, "blah"),
 			expectLabel:  "abc",
-			expectPacket: buildBuffer(t, pingMsg, "blah"),
+			expectPacket: buildBuffer(t, memberlist.PingMsg, "blah"),
 		},
 		"error with label": testcase{ // 2021-10: largest standard message type
-			buf:          buildBuffer(t, hasLabelMsg, 3, "abc", errMsg, "blah"),
+			buf:          buildBuffer(t, memberlist.HasLabelMsg, 3, "abc", memberlist.ErrMsg, "blah"),
 			expectLabel:  "abc",
-			expectPacket: buildBuffer(t, errMsg, "blah"),
+			expectPacket: buildBuffer(t, memberlist.ErrMsg, "blah"),
 		},
 		"v1 encrypt with label": testcase{ // 2021-10: highest encryption version
-			buf:          buildBuffer(t, hasLabelMsg, 3, "abc", maxEncryptionVersion, "blah"),
+			buf:          buildBuffer(t, memberlist.HasLabelMsg, 3, "abc", memberlist.MaxEncryptionVersion, "blah"),
 			expectLabel:  "abc",
-			expectPacket: buildBuffer(t, maxEncryptionVersion, "blah"),
+			expectPacket: buildBuffer(t, memberlist.MaxEncryptionVersion, "blah"),
 		},
 	}
 
@@ -179,7 +180,7 @@ func TestAddLabelHeaderToStream(t *testing.T) {
 			dataCh <- buf.Bytes()
 		}()
 
-		err := AddLabelHeaderToStream(client, tc.label)
+		err := memberlist.AddLabelHeaderToStream(client, tc.label)
 		if tc.expectErr != "" {
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tc.expectErr)
@@ -211,11 +212,11 @@ func TestAddLabelHeaderToStream(t *testing.T) {
 		},
 		"with label": testcase{
 			label:      "foo",
-			expectData: buildBuffer(t, hasLabelMsg, 3, "foo"),
+			expectData: buildBuffer(t, memberlist.HasLabelMsg, 3, "foo"),
 		},
 		"almost too long label": testcase{
 			label:      longLabel,
-			expectData: buildBuffer(t, hasLabelMsg, 255, longLabel),
+			expectData: buildBuffer(t, memberlist.HasLabelMsg, 255, longLabel),
 		},
 		"label too long by one byte": testcase{
 			label:     longLabel + "x",
@@ -254,7 +255,7 @@ func TestRemoveLabelHeaderFromStream(t *testing.T) {
 			server.Close()
 		}()
 
-		newConn, gotLabel, err := RemoveLabelHeaderFromStream(client)
+		newConn, gotLabel, err := memberlist.RemoveLabelHeaderFromStream(client)
 		if tc.expectErr != "" {
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tc.expectErr)
@@ -276,50 +277,50 @@ func TestRemoveLabelHeaderFromStream(t *testing.T) {
 			expectData:  []byte{},
 		},
 		"ping with no label": testcase{
-			buf:         buildBuffer(t, pingMsg, "blah"),
+			buf:         buildBuffer(t, memberlist.PingMsg, "blah"),
 			expectLabel: "",
-			expectData:  buildBuffer(t, pingMsg, "blah"),
+			expectData:  buildBuffer(t, memberlist.PingMsg, "blah"),
 		},
 		"error with no label": testcase{ // 2021-10: largest standard message type
-			buf:         buildBuffer(t, errMsg, "blah"),
+			buf:         buildBuffer(t, memberlist.ErrMsg, "blah"),
 			expectLabel: "",
-			expectData:  buildBuffer(t, errMsg, "blah"),
+			expectData:  buildBuffer(t, memberlist.ErrMsg, "blah"),
 		},
 		"v1 encrypt with no label": testcase{ // 2021-10: highest encryption version
-			buf:         buildBuffer(t, maxEncryptionVersion, "blah"),
+			buf:         buildBuffer(t, memberlist.MaxEncryptionVersion, "blah"),
 			expectLabel: "",
-			expectData:  buildBuffer(t, maxEncryptionVersion, "blah"),
+			expectData:  buildBuffer(t, memberlist.MaxEncryptionVersion, "blah"),
 		},
 		"buf too small for label": testcase{
-			buf:       buildBuffer(t, hasLabelMsg, "x"),
+			buf:       buildBuffer(t, memberlist.HasLabelMsg, "x"),
 			expectErr: `cannot decode label; stream has been truncated`,
 		},
 		"buf too small for label size": testcase{
-			buf:       buildBuffer(t, hasLabelMsg),
+			buf:       buildBuffer(t, memberlist.HasLabelMsg),
 			expectErr: `cannot decode label; stream has been truncated`,
 		},
 		"label empty": testcase{
-			buf:       buildBuffer(t, hasLabelMsg, 0, "x"),
+			buf:       buildBuffer(t, memberlist.HasLabelMsg, 0, "x"),
 			expectErr: `label header cannot be empty when present`,
 		},
 		"label truncated": testcase{
-			buf:       buildBuffer(t, hasLabelMsg, 2, "x"),
+			buf:       buildBuffer(t, memberlist.HasLabelMsg, 2, "x"),
 			expectErr: `cannot decode label; stream has been truncated`,
 		},
 		"ping with label": testcase{
-			buf:         buildBuffer(t, hasLabelMsg, 3, "abc", pingMsg, "blah"),
+			buf:         buildBuffer(t, memberlist.HasLabelMsg, 3, "abc", memberlist.PingMsg, "blah"),
 			expectLabel: "abc",
-			expectData:  buildBuffer(t, pingMsg, "blah"),
+			expectData:  buildBuffer(t, memberlist.PingMsg, "blah"),
 		},
 		"error with label": testcase{ // 2021-10: largest standard message type
-			buf:         buildBuffer(t, hasLabelMsg, 3, "abc", errMsg, "blah"),
+			buf:         buildBuffer(t, memberlist.HasLabelMsg, 3, "abc", memberlist.ErrMsg, "blah"),
 			expectLabel: "abc",
-			expectData:  buildBuffer(t, errMsg, "blah"),
+			expectData:  buildBuffer(t, memberlist.ErrMsg, "blah"),
 		},
 		"v1 encrypt with label": testcase{ // 2021-10: highest encryption version
-			buf:         buildBuffer(t, hasLabelMsg, 3, "abc", maxEncryptionVersion, "blah"),
+			buf:         buildBuffer(t, memberlist.HasLabelMsg, 3, "abc", memberlist.MaxEncryptionVersion, "blah"),
 			expectLabel: "abc",
-			expectData:  buildBuffer(t, maxEncryptionVersion, "blah"),
+			expectData:  buildBuffer(t, memberlist.MaxEncryptionVersion, "blah"),
 		},
 	}
 
@@ -342,9 +343,9 @@ func buildBuffer(t *testing.T, stuff ...interface{}) []byte {
 			buf.WriteByte(byte(x2))
 		case byte:
 			buf.WriteByte(byte(x))
-		case messageType:
+		case memberlist.MessageType:
 			buf.WriteByte(byte(x))
-		case encryptionVersion:
+		case memberlist.EncryptionVersion:
 			buf.WriteByte(byte(x))
 		case string:
 			buf.Write([]byte(x))
@@ -358,7 +359,7 @@ func buildBuffer(t *testing.T, stuff ...interface{}) []byte {
 }
 
 func TestLabelOverhead(t *testing.T) {
-	require.Equal(t, 0, labelOverhead(""))
-	require.Equal(t, 3, labelOverhead("a"))
-	require.Equal(t, 9, labelOverhead("abcdefg"))
+	require.Equal(t, 0, memberlist.LabelOverhead(""))
+	require.Equal(t, 3, memberlist.LabelOverhead("a"))
+	require.Equal(t, 9, memberlist.LabelOverhead("abcdefg"))
 }

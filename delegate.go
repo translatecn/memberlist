@@ -6,9 +6,7 @@ import "time"
 // into the gossip layer of Members. All the methods must be thread-safe,
 // as they can and generally will be called concurrently.
 type Delegate interface {
-	// NodeMeta is used to retrieve meta-data about the current node
-	// when broadcasting an alive message. It's length is limited to
-	// the given byte size. This metadata is available in the Node structure.
+	// NodeMeta 用于在广播Alive消息时检索关于当前节点的元数据。它的长度被限制在给定的字节大小。这个元数据可以在Node结构中找到。
 	NodeMeta(limit int) []byte
 
 	// NotifyMsg is called when a user-data message is received.
@@ -46,26 +44,26 @@ type MergeDelegate interface {
 // ConflictDelegate is a used to inform a client that
 // a node has attempted to join which would result in a
 // name conflict. This happens if two clients are configured
-// with the same name but different addresses.
+// with the same name but different Addresses.
 type ConflictDelegate interface {
 	// NotifyConflict is invoked when a name conflict is detected
 	NotifyConflict(existing, other *Node)
 }
 
-// PingDelegate is used to notify an observer how long it took for a ping message to
+// PingDelegate is used to notify an observer how long it took for a Ping message to
 // complete a round trip.  It can also be used for writing arbitrary byte slices
 // into ack messages. Note that in order to be meaningful for RTT estimates, this
 // delegate does not apply to indirect pings, nor fallback pings sent over TCP.
 type PingDelegate interface {
 	// AckPayload is invoked when an ack is being sent; the returned bytes will be appended to the ack
 	AckPayload() []byte
-	// NotifyPingComplete  NotifyPing is invoked when an ack for a ping is received
+	// NotifyPingComplete  NotifyPing is invoked when an ack for a Ping is received
 	NotifyPingComplete(other *Node, rtt time.Duration, payload []byte)
 }
 
-// AliveDelegate 是用来让客户端参与处理一个节点的 "alive"消息。通过一个活着的消息更新该节点的状态。
+// AliveDelegate 是用来让客户端参与处理一个节点的 "Alive"消息。通过一个活着的消息更新该节点的状态。
 type AliveDelegate interface {
-	// NotifyAlive 从网络中接收到了某个节点的alive信息
+	// NotifyAlive 从网络中接收到了某个节点的Alive信息
 	NotifyAlive(peer *Node) error
 }
 

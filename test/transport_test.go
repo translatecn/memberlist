@@ -1,6 +1,7 @@
-package memberlist
+package test
 
 import (
+	"github.com/hashicorp/memberlist"
 	"log"
 	"net"
 	"strings"
@@ -12,33 +13,33 @@ import (
 )
 
 func TestTransport_Join(t *testing.T) {
-	net := &MockNetwork{}
+	net := &memberlist.MockNetwork{}
 
 	t1 := net.NewTransport("node1")
 
-	c1 := DefaultLANConfig()
+	c1 := memberlist.DefaultLANConfig()
 	c1.Name = "node1"
 	c1.Transport = t1
-	m1, err := Create(c1)
+	m1, err := memberlist.Create(c1)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	m1.setAlive()
-	m1.schedule()
+	m1.SetAlive()
+	m1.Schedule()
 	defer m1.Shutdown()
 
-	c2 := DefaultLANConfig()
+	c2 := memberlist.DefaultLANConfig()
 	c2.Name = "node2"
 	c2.Transport = net.NewTransport("node2")
-	m2, err := Create(c2)
+	m2, err := memberlist.Create(c2)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	m2.setAlive()
-	m2.schedule()
+	m2.SetAlive()
+	m2.Schedule()
 	defer m2.Shutdown()
 
-	num, err := m2.Join([]string{c1.Name + "/" + t1.addr.String()})
+	num, err := m2.Join([]string{c1.Name + "/" + t1.Addr.String()})
 	if num != 1 {
 		t.Fatalf("bad: %d", num)
 	}
@@ -49,42 +50,42 @@ func TestTransport_Join(t *testing.T) {
 	if len(m2.Members()) != 2 {
 		t.Fatalf("bad: %v", m2.Members())
 	}
-	if m2.estNumNodes() != 2 {
+	if m2.EstNumNodes() != 2 {
 		t.Fatalf("bad: %v", m2.Members())
 	}
 
 }
 
 func TestTransport_Send(t *testing.T) {
-	net := &MockNetwork{}
+	net := &memberlist.MockNetwork{}
 
 	t1 := net.NewTransport("node1")
 	d1 := &MockDelegate{}
 
-	c1 := DefaultLANConfig()
+	c1 := memberlist.DefaultLANConfig()
 	c1.Name = "node1"
 	c1.Transport = t1
 	c1.Delegate = d1
-	m1, err := Create(c1)
+	m1, err := memberlist.Create(c1)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	m1.setAlive()
-	m1.schedule()
+	m1.SetAlive()
+	m1.Schedule()
 	defer m1.Shutdown()
 
-	c2 := DefaultLANConfig()
+	c2 := memberlist.DefaultLANConfig()
 	c2.Name = "node2"
 	c2.Transport = net.NewTransport("node2")
-	m2, err := Create(c2)
+	m2, err := memberlist.Create(c2)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	m2.setAlive()
-	m2.schedule()
+	m2.SetAlive()
+	m2.Schedule()
 	defer m2.Shutdown()
 
-	num, err := m2.Join([]string{c1.Name + "/" + t1.addr.String()})
+	num, err := m2.Join([]string{c1.Name + "/" + t1.Addr.String()})
 	if num != 1 {
 		t.Fatalf("bad: %d", num)
 	}
@@ -92,11 +93,11 @@ func TestTransport_Send(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	if err := m2.SendTo(t1.addr, []byte("SendTo")); err != nil {
+	if err := m2.SendTo(t1.Addr, []byte("SendTo")); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 
-	var n1 *Node
+	var n1 *memberlist.Node
 	for _, n := range m2.Members() {
 		if n.Name == c1.Name {
 			n1 = n
@@ -161,32 +162,32 @@ func TestTransport_TcpListenBackoff(t *testing.T) {
 	var numCalls int32
 	countingWriter := testCountingWriter{t, &numCalls}
 	countingLogger := log.New(countingWriter, "test", log.LstdFlags)
-	transport := NetTransport{
+	Transport := NetTransport{
 		streamCh: make(chan net.Conn),
 		logger:   countingLogger,
 	}
-	transport.wg.Add(1)
+	Transport.wg.Add(1)
 
 	// create a listener that will cause AcceptTCP calls to fail
 	listener, _ := net.ListenTCP("tcp", nil)
 	listener.Close()
-	go transport.tcpListen(listener)
+	go Transport.tcpListen(listener)
 
 	// sleep (+yield) for testTime seconds before asking the accept loop to shut down
 	time.Sleep(testTime)
-	atomic.StoreInt32(&transport.shutdown, 1)
+	atomic.StoreInt32(&Transport.shutdown, 1)
 
 	// Verify that the wg was completed on exit (but without blocking this test)
 	// maxDelay == 1s, so we will give the routine 1.25s to loop around and shut down.
 	c := make(chan struct{})
 	go func() {
 		defer close(c)
-		transport.wg.Wait()
+		Transport.wg.Wait()
 	}()
 	select {
 	case <-c:
 	case <-time.After(1250 * time.Millisecond):
-		t.Error("timed out waiting for transport waitgroup to be done after flagging shutdown")
+		t.Error("timed out waiting for Transport waitgroup to be done after flagging shutdown")
 	}
 
 	// In testTime==4s, we expect to loop approximately 12 times (and log approximately 11 errors),
@@ -201,5 +202,5 @@ func TestTransport_TcpListenBackoff(t *testing.T) {
 	require.True(t, numCalls < 14)
 
 	// no connections should have been accepted and sent to the channel
-	require.Equal(t, len(transport.streamCh), 0)
+	require.Equal(t, len(Transport.streamCh), 0)
 }

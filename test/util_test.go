@@ -1,7 +1,8 @@
-package memberlist
+package test
 
 import (
 	"fmt"
+	"github.com/hashicorp/memberlist"
 	"github.com/hashicorp/memberlist/pkg"
 	"reflect"
 	"testing"
@@ -12,7 +13,7 @@ import (
 
 func TestUtil_PortFunctions(t *testing.T) {
 	tests := []struct {
-		addr       string
+		Addr       string
 		hasPort    bool
 		ensurePort string
 	}{
@@ -27,11 +28,11 @@ func TestUtil_PortFunctions(t *testing.T) {
 		{"hashicorp.com:1234", true, "hashicorp.com:1234"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.addr, func(t *testing.T) {
-			if got, want := pkg.HasPort(tt.addr), tt.hasPort; got != want {
+		t.Run(tt.Addr, func(t *testing.T) {
+			if got, want := pkg.HasPort(tt.Addr), tt.hasPort; got != want {
 				t.Fatalf("got %v want %v", got, want)
 			}
-			if got, want := pkg.EnsurePort(tt.addr, 8301), tt.ensurePort; got != want {
+			if got, want := pkg.EnsurePort(tt.Addr, 8301), tt.ensurePort; got != want {
 				t.Fatalf("got %v want %v", got, want)
 			}
 		})
@@ -39,13 +40,13 @@ func TestUtil_PortFunctions(t *testing.T) {
 }
 
 func TestEncodeDecode(t *testing.T) {
-	msg := &ping{SeqNo: 100}
-	buf, err := encode(pingMsg, msg)
+	msg := &memberlist.Ping{SeqNo: 100}
+	buf, err := memberlist.Encode(memberlist.PingMsg, msg)
 	if err != nil {
 		t.Fatalf("unexpected err: %s", err)
 	}
-	var out ping
-	if err := decode(buf.Bytes()[1:], &out); err != nil {
+	var out memberlist.Ping
+	if err := memberlist.Decode(buf.Bytes()[1:], &out); err != nil {
 		t.Fatalf("unexpected err: %s", err)
 	}
 	if msg.SeqNo != out.SeqNo {
@@ -56,7 +57,7 @@ func TestEncodeDecode(t *testing.T) {
 func TestRandomOffset(t *testing.T) {
 	vals := make(map[int]struct{})
 	for i := 0; i < 100; i++ {
-		offset := randomOffset(2 << 30)
+		offset := memberlist.RandomOffset(2 << 30)
 		if _, ok := vals[offset]; ok {
 			t.Fatalf("got collision")
 		}
@@ -65,7 +66,7 @@ func TestRandomOffset(t *testing.T) {
 }
 
 func TestRandomOffset_Zero(t *testing.T) {
-	offset := randomOffset(0)
+	offset := memberlist.RandomOffset(0)
 	if offset != 0 {
 		t.Fatalf("bad offset")
 	}
@@ -81,7 +82,7 @@ func TestSuspicionTimeout(t *testing.T) {
 		1000: 3000 * time.Millisecond,
 	}
 	for n, expected := range timeouts {
-		timeout := suspicionTimeout(3, n, time.Second) / 3
+		timeout := memberlist.SuspicionTimeout(3, n, time.Second) / 3
 		if timeout != expected {
 			t.Fatalf("bad: %v, %v", expected, timeout)
 		}
@@ -89,40 +90,40 @@ func TestSuspicionTimeout(t *testing.T) {
 }
 
 func TestShuffleNodes(t *testing.T) {
-	orig := []*nodeState{
-		&nodeState{
-			State: StateDead,
+	orig := []*memberlist.NodeState{
+		&memberlist.NodeState{
+			State: memberlist.StateDead,
 		},
-		&nodeState{
-			State: StateAlive,
+		&memberlist.NodeState{
+			State: memberlist.StateAlive,
 		},
-		&nodeState{
-			State: StateAlive,
+		&memberlist.NodeState{
+			State: memberlist.StateAlive,
 		},
-		&nodeState{
-			State: StateDead,
+		&memberlist.NodeState{
+			State: memberlist.StateDead,
 		},
-		&nodeState{
-			State: StateAlive,
+		&memberlist.NodeState{
+			State: memberlist.StateAlive,
 		},
-		&nodeState{
-			State: StateAlive,
+		&memberlist.NodeState{
+			State: memberlist.StateAlive,
 		},
-		&nodeState{
-			State: StateDead,
+		&memberlist.NodeState{
+			State: memberlist.StateDead,
 		},
-		&nodeState{
-			State: StateAlive,
+		&memberlist.NodeState{
+			State: memberlist.StateAlive,
 		},
 	}
-	nodes := make([]*nodeState, len(orig))
+	nodes := make([]*memberlist.NodeState, len(orig))
 	copy(nodes[:], orig[:])
 
 	if !reflect.DeepEqual(nodes, orig) {
 		t.Fatalf("should match")
 	}
 
-	shuffleNodes(nodes)
+	memberlist.ShuffleNodes(nodes)
 
 	if reflect.DeepEqual(nodes, orig) {
 		t.Fatalf("should not match")
@@ -132,85 +133,85 @@ func TestShuffleNodes(t *testing.T) {
 func TestPushPullScale(t *testing.T) {
 	sec := time.Second
 	for i := 0; i <= 32; i++ {
-		if s := pushPullScale(sec, i); s != sec {
+		if s := memberlist.PushPullScale(sec, i); s != sec {
 			t.Fatalf("Bad time scale: %v", s)
 		}
 	}
 	for i := 33; i <= 64; i++ {
-		if s := pushPullScale(sec, i); s != 2*sec {
+		if s := memberlist.PushPullScale(sec, i); s != 2*sec {
 			t.Fatalf("Bad time scale: %v", s)
 		}
 	}
 	for i := 65; i <= 128; i++ {
-		if s := pushPullScale(sec, i); s != 3*sec {
+		if s := memberlist.PushPullScale(sec, i); s != 3*sec {
 			t.Fatalf("Bad time scale: %v", s)
 		}
 	}
 }
 
 func TestMoveDeadNodes(t *testing.T) {
-	nodes := []*nodeState{
-		&nodeState{
-			State:       StateDead,
+	nodes := []*memberlist.NodeState{
+		&memberlist.NodeState{
+			State:       memberlist.StateDead,
 			StateChange: time.Now().Add(-20 * time.Second),
 		},
-		&nodeState{
-			State:       StateAlive,
+		&memberlist.NodeState{
+			State:       memberlist.StateAlive,
 			StateChange: time.Now().Add(-20 * time.Second),
 		},
-		// This dead node should not be moved, as its state changed
+		// This Dead node should not be moved, as its state changed
 		// less than the specified GossipToTheDead time ago
-		&nodeState{
-			State:       StateDead,
+		&memberlist.NodeState{
+			State:       memberlist.StateDead,
 			StateChange: time.Now().Add(-10 * time.Second),
 		},
 		// This left node should not be moved, as its state changed
 		// less than the specified GossipToTheDead time ago
-		&nodeState{
-			State:       StateLeft,
+		&memberlist.NodeState{
+			State:       memberlist.StateLeft,
 			StateChange: time.Now().Add(-10 * time.Second),
 		},
-		&nodeState{
-			State:       StateLeft,
+		&memberlist.NodeState{
+			State:       memberlist.StateLeft,
 			StateChange: time.Now().Add(-20 * time.Second),
 		},
-		&nodeState{
-			State:       StateAlive,
+		&memberlist.NodeState{
+			State:       memberlist.StateAlive,
 			StateChange: time.Now().Add(-20 * time.Second),
 		},
-		&nodeState{
-			State:       StateDead,
+		&memberlist.NodeState{
+			State:       memberlist.StateDead,
 			StateChange: time.Now().Add(-20 * time.Second),
 		},
-		&nodeState{
-			State:       StateAlive,
+		&memberlist.NodeState{
+			State:       memberlist.StateAlive,
 			StateChange: time.Now().Add(-20 * time.Second),
 		},
-		&nodeState{
-			State:       StateLeft,
+		&memberlist.NodeState{
+			State:       memberlist.StateLeft,
 			StateChange: time.Now().Add(-20 * time.Second),
 		},
 	}
 
-	idx := moveDeadNodes(nodes, (15 * time.Second))
+	idx := memberlist.MoveDeadNodes(nodes, (15 * time.Second))
 	if idx != 5 {
 		t.Fatalf("bad index")
 	}
 	for i := 0; i < idx; i++ {
 		switch i {
 		case 2:
-			// Recently dead node remains at index 2,
-			// since nodes are swapped out to move to end.
-			if nodes[i].State != StateDead {
+			// Recently Dead node remains at index 2,
+			// since Nodes are swapped out to move to end.
+			if nodes[i].State != memberlist.StateDead {
 				t.Fatalf("Bad state %d", i)
 			}
 		case 3:
 			//Recently left node should remain at 3
-			if nodes[i].State != StateLeft {
+			if nodes[i].State != memberlist.StateLeft {
 				t.Fatalf("Bad State %d", i)
 			}
 		default:
-			if nodes[i].State != StateAlive {
+			if nodes[i].State != memberlist.StateAlive {
 				t.Fatalf("Bad state %d", i)
 			}
 		}
@@ -223,36 +224,36 @@ func TestMoveDeadNodes(t *testing.T) {
 }
 
 func TestKRandomNodes(t *testing.T) {
-	nodes := []*nodeState{}
+	nodes := []*memberlist.NodeState{}
 	for i := 0; i < 90; i++ {
-		// Half the nodes are in a bad state
-		state := StateAlive
+		// Half the Nodes are in a bad state
+		state := memberlist.StateAlive
 		switch i % 3 {
 		case 0:
-			state = StateAlive
+			state = memberlist.StateAlive
 		case 1:
-			state = StateSuspect
+			state = memberlist.StateSuspect
 		case 2:
-			state = StateDead
+			state = memberlist.StateDead
 		}
-		nodes = append(nodes, &nodeState{
-			Node: Node{
+		nodes = append(nodes, &memberlist.NodeState{
+			Node: memberlist.Node{
 				Name: fmt.Sprintf("test%d", i),
 			},
 			State: state,
 		})
 	}
 
-	filterFunc := func(n *nodeState) bool {
-		if n.Name == "test0" || n.State != StateAlive {
+	filterFunc := func(n *memberlist.NodeState) bool {
+		if n.Name == "test0" || n.State != memberlist.StateAlive {
 			return true
 		}
 		return false
 	}
 
-	s1 := kRandomNodes(3, nodes, filterFunc)
-	s2 := kRandomNodes(3, nodes, filterFunc)
-	s3 := kRandomNodes(3, nodes, filterFunc)
+	s1 := memberlist.KRandomNodes(3, nodes, filterFunc)
+	s2 := memberlist.KRandomNodes(3, nodes, filterFunc)
+	s3 := memberlist.KRandomNodes(3, nodes, filterFunc)
 
 	if reflect.DeepEqual(s1, s2) {
 		t.Fatalf("unexpected equal")
@@ -264,7 +265,7 @@ func TestKRandomNodes(t *testing.T) {
 		t.Fatalf("unexpected equal")
 	}
 
-	for _, s := range [][]Node{s1, s2, s3} {
+	for _, s := range [][]memberlist.Node{s1, s2, s3} {
 		if len(s) != 3 {
 			t.Fatalf("bad len")
 		}
@@ -272,7 +273,7 @@ func TestKRandomNodes(t *testing.T) {
 			if n.Name == "test0" {
 				t.Fatalf("Bad name")
 			}
-			if n.State != StateAlive {
+			if n.State != memberlist.StateAlive {
 				t.Fatalf("Bad state")
 			}
 		}
@@ -280,31 +281,31 @@ func TestKRandomNodes(t *testing.T) {
 }
 
 func TestMakeCompoundMessage(t *testing.T) {
-	msg := &ping{SeqNo: 100}
-	buf, err := encode(pingMsg, msg)
+	msg := &memberlist.Ping{SeqNo: 100}
+	buf, err := memberlist.Encode(memberlist.PingMsg, msg)
 	if err != nil {
 		t.Fatalf("unexpected err: %s", err)
 	}
 
 	msgs := [][]byte{buf.Bytes(), buf.Bytes(), buf.Bytes()}
-	compound := makeCompoundMessage(msgs)
+	compound := memberlist.MakeCompoundMessage(msgs)
 
-	if compound.Len() != 3*buf.Len()+3*compoundOverhead+compoundHeaderOverhead {
+	if compound.Len() != 3*buf.Len()+3*memberlist.CompoundOverhead+memberlist.CompoundHeaderOverhead {
 		t.Fatalf("bad len")
 	}
 }
 
 func TestDecodeCompoundMessage(t *testing.T) {
-	msg := &ping{SeqNo: 100}
-	buf, err := encode(pingMsg, msg)
+	msg := &memberlist.Ping{SeqNo: 100}
+	buf, err := memberlist.Encode(memberlist.PingMsg, msg)
 	if err != nil {
 		t.Fatalf("unexpected err: %s", err)
 	}
 
 	msgs := [][]byte{buf.Bytes(), buf.Bytes(), buf.Bytes()}
-	compound := makeCompoundMessage(msgs)
+	compound := memberlist.MakeCompoundMessage(msgs)
 
-	trunc, parts, err := decodeCompoundMessage(compound.Bytes()[1:])
+	trunc, parts, err := memberlist.DecodeCompoundMessage(compound.Bytes()[1:])
 	if err != nil {
 		t.Fatalf("unexpected err: %s", err)
 	}
@@ -323,22 +324,22 @@ func TestDecodeCompoundMessage(t *testing.T) {
 
 func TestDecodeCompoundMessage_NumberOfPartsOverflow(t *testing.T) {
 	buf := []byte{0x80}
-	_, _, err := decodeCompoundMessage(buf)
+	_, _, err := memberlist.DecodeCompoundMessage(buf)
 	require.Error(t, err)
 	require.Equal(t, err.Error(), "truncated len slice")
 }
 
 func TestDecodeCompoundMessage_Trunc(t *testing.T) {
-	msg := &ping{SeqNo: 100}
-	buf, err := encode(pingMsg, msg)
+	msg := &memberlist.Ping{SeqNo: 100}
+	buf, err := memberlist.Encode(memberlist.PingMsg, msg)
 	if err != nil {
 		t.Fatalf("unexpected err: %s", err)
 	}
 
 	msgs := [][]byte{buf.Bytes(), buf.Bytes(), buf.Bytes()}
-	compound := makeCompoundMessage(msgs)
+	compound := memberlist.MakeCompoundMessage(msgs)
 
-	trunc, parts, err := decodeCompoundMessage(compound.Bytes()[1:38])
+	trunc, parts, err := memberlist.DecodeCompoundMessage(compound.Bytes()[1:38])
 	if err != nil {
 		t.Fatalf("unexpected err: %s", err)
 	}
@@ -355,13 +356,13 @@ func TestDecodeCompoundMessage_Trunc(t *testing.T) {
 	}
 }
 
-func TestCompressDecompressPayload(t *testing.T) {
-	buf, err := compressPayload([]byte("testing"))
+func TestCompressDeCompressPayload(t *testing.T) {
+	buf, err := memberlist.CompressPayload([]byte("testing"))
 	if err != nil {
 		t.Fatalf("unexpected err: %s", err)
 	}
 
-	decomp, err := decompressPayload(buf.Bytes()[1:])
+	decomp, err := memberlist.DeCompressPayload(buf.Bytes()[1:])
 	if err != nil {
 		t.Fatalf("unexpected err: %s", err)
 	}

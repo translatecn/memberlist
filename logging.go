@@ -5,20 +5,20 @@ import (
 	"net"
 )
 
-func LogAddress(addr net.Addr) string {
-	if addr == nil {
-		return "from=<unknown address>"
+func LogAddress(Addr net.Addr) string {
+	if Addr == nil {
+		return "from=<unknown Address>"
 	}
 
-	return fmt.Sprintf("from=%s", addr.String())
+	return fmt.Sprintf("from=%s", Addr.String())
 }
 
-func LogStringAddress(addr string) string {
-	if addr == "" {
-		return "from=<unknown address>"
+func LogStringAddress(Addr string) string {
+	if Addr == "" {
+		return "from=<unknown Address>"
 	}
 
-	return fmt.Sprintf("from=%s", addr)
+	return fmt.Sprintf("from=%s", Addr)
 }
 
 func LogConn(conn net.Conn) string {

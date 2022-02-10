@@ -1,7 +1,8 @@
-package memberlist
+package test
 
 import (
 	"bytes"
+	"github.com/hashicorp/memberlist"
 	"reflect"
 	"testing"
 )
@@ -19,10 +20,10 @@ func TestPKCS7(t *testing.T) {
 		inp.Write(buf)
 
 		// Pad this out
-		pkcs7encode(inp, 0, 16)
+		memberlist.Pkcs7encode(inp, 0, 16)
 
 		// Unpad
-		dec := pkcs7decode(inp.Bytes(), 16)
+		dec := memberlist.Pkcs7decode(inp.Bytes(), 16)
 
 		// Ensure equivilence
 		if !reflect.DeepEqual(buf, dec) {
@@ -40,23 +41,23 @@ func TestEncryptDecrypt_V1(t *testing.T) {
 	encryptDecryptVersioned(1, t)
 }
 
-func encryptDecryptVersioned(vsn encryptionVersion, t *testing.T) {
+func encryptDecryptVersioned(vsn memberlist.EncryptionVersion, t *testing.T) {
 	k1 := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 	plaintext := []byte("this is a plain text message")
 	extra := []byte("random data")
 
 	var buf bytes.Buffer
-	err := encryptPayload(vsn, k1, plaintext, extra, &buf)
+	err := memberlist.EncryptPayload(vsn, k1, plaintext, extra, &buf)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
 
-	expLen := encryptedLength(vsn, len(plaintext))
+	expLen := memberlist.EncryptedLength(vsn, len(plaintext))
 	if buf.Len() != expLen {
 		t.Fatalf("output length is unexpected %d %d %d", len(plaintext), buf.Len(), expLen)
 	}
 
-	msg, err := decryptPayload([][]byte{k1}, buf.Bytes(), extra)
+	msg, err := memberlist.DecryptPayload([][]byte{k1}, buf.Bytes(), extra)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}

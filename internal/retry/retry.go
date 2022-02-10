@@ -188,7 +188,7 @@ type Timer struct {
 	Timeout time.Duration
 	Wait    time.Duration
 
-	// stop is the timeout deadline.
+	// stop is the timeout Deadline.
 	// Set on the first invocation of Next().
 	stop time.Time
 }

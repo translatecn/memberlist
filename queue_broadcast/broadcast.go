@@ -17,15 +17,13 @@ type MemberlistBroadcast struct {
 	Notify chan struct{}
 }
 
+// Invalidates 类型校验、验证消息是不是来自同一台机器
 func (b *MemberlistBroadcast) Invalidates(other Broadcast) bool {
-	// Check if that broadcast is a memberlist type
-
 	mb, ok := other.(*MemberlistBroadcast)
 	if !ok {
 		return false
 	}
 
-	// Invalidates any message about the same Node
 	return b.Node == mb.Node
 }
 

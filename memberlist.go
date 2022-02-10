@@ -9,7 +9,6 @@ import (
 	"github.com/hashicorp/memberlist/queue_broadcast"
 	"log"
 	"net"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,7 +16,7 @@ import (
 	"time"
 
 	multierror "github.com/hashicorp/go-multierror"
-	sockaddr "github.com/hashicorp/go-sockaddr"
+	sockAddr "github.com/hashicorp/go-sockaddr"
 	"github.com/miekg/dns"
 )
 
@@ -37,18 +36,18 @@ import (
 var errNodeNamesAreRequired = errors.New("memberlist: 配置需要节点名，但没有提供节点名")
 
 type Members struct {
-	sequenceNum uint32 // 本地序列号
+	SequenceNum uint32 // 本地序列号
 	// 周期性的full state sync，使用incarnation number去调协
 	incarnation uint32 // Local incarnation number
 	numNodes    uint32 // 已知节点数(估计)
-	pushPullReq uint32 // push/pull 请求数
+	PushPullReq uint32 // push/pull 请求数
 
 	advertiseLock sync.RWMutex
 	advertiseAddr net.IP
 	advertisePort uint16
 
-	config         *Config
-	shutdown       int32 // 停止标志
+	Config   *Config
+	shutdown int32 // 停止标志
 	shutdownCh     chan struct{}
 	leave          int32
 	leaveBroadcast chan struct{} // 离开广播
@@ -56,16 +55,16 @@ type Members struct {
 	shutdownLock sync.Mutex
 	leaveLock    sync.Mutex
 
-	transport            NodeAwareTransport
+	Transport            NodeAwareTransport
 	handoffCh            chan struct{} //TODO 消息队列
 	highPriorityMsgQueue *list.List
 	lowPriorityMsgQueue  *list.List
 	msgQueueLock         sync.Mutex
 
-	nodeLock   sync.RWMutex
+	NodeLock   sync.RWMutex
 	probeIndex int                   // 节点探活索引  与nodes对应
-	nodes      []*nodeState          // Known nodes
-	nodeMap    map[string]*nodeState // ls-2018.local -> NodeState
+	Nodes      []*NodeState          // Known Nodes
+	NodeMap    map[string]*NodeState // ls-2018.local -> NodeState
 	nodeTimers map[string]*suspicion // ls-2018.local -> suspicion timer
 	Awareness  *pkg.Awareness
 
@@ -73,173 +72,18 @@ type Members struct {
 	tickers    []*time.Ticker
 	stopTickCh chan struct{}
 
-	ackLock     sync.Mutex
-	ackHandlers map[uint32]*ackHandler
+	AckLock     sync.Mutex
+	AckHandlers map[uint32]*AckHandler
 
-	broadcasts *queue_broadcast.TransmitLimitedQueue
+	Broadcasts *queue_broadcast.TransmitLimitedQueue
 
-	logger *log.Logger
-}
-
-// BuildVsnArray 创建Vsn数组
-func (c *Config) BuildVsnArray() []uint8 {
-	return []uint8{
-		ProtocolVersionMin, ProtocolVersionMax, c.ProtocolVersion,
-		c.DelegateProtocolMin, c.DelegateProtocolMax, c.DelegateProtocolVersion,
-	}
-}
-
-// newMembers 创建网络监听器,只能在主线程被调度
-func newMembers(conf *Config) (*Members, error) {
-	if conf.ProtocolVersion < ProtocolVersionMin {
-		return nil, fmt.Errorf("协议版本 '%d' 太小. 必须在这个范围: [%d, %d]", conf.ProtocolVersion, ProtocolVersionMin, ProtocolVersionMax)
-	} else if conf.ProtocolVersion > ProtocolVersionMax {
-		return nil, fmt.Errorf("协议版本 '%d' 太高. 必须在这个范围: [%d, %d]", conf.ProtocolVersion, ProtocolVersionMin, ProtocolVersionMax)
-	}
-
-	if len(conf.SecretKey) > 0 {
-		if conf.Keyring == nil {
-			keyring, err := NewKeyring(nil, conf.SecretKey)
-			if err != nil {
-				return nil, err
-			}
-			conf.Keyring = keyring
-		} else {
-			if err := conf.Keyring.AddKey(conf.SecretKey); err != nil {
-				return nil, err
-			}
-			if err := conf.Keyring.UseKey(conf.SecretKey); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	if conf.LogOutput != nil && conf.Logger != nil {
-		return nil, fmt.Errorf("不能同时指定LogOutput和Logger。请选择一个单一的日志配置设置。")
-	}
-
-	logDest := conf.LogOutput
-	if logDest == nil {
-		logDest = os.Stderr
-	}
-
-	logger := conf.Logger
-	if logger == nil {
-		logger = log.New(logDest, "", log.LstdFlags)
-	}
-
-	// 如果配置中没有给出自定义的网络传输，则默认设置网络传输。
-	transport := conf.Transport // 默认为nil
-	if transport == nil {
-		nc := &NetTransportConfig{
-			BindAddrs: []string{conf.BindAddr}, // 0.0.0.0
-			BindPort:  conf.BindPort,
-			Logger:    logger,
-		}
-
-		// 关于重试的详细信息，请参阅下面的注释。
-		makeNetRetry := func(limit int) (*NetTransport, error) {
-			var err error
-			for try := 0; try < limit; try++ {
-				var nt *NetTransport
-				if nt, err = NewNetTransport(nc); err == nil {
-					return nt, nil
-				}
-				if strings.Contains(err.Error(), "已使用地址") {
-					logger.Printf("[DEBUG] Got bind error: %v", err)
-					continue
-				}
-			}
-
-			return nil, fmt.Errorf("获取地址失败: %v", err)
-		}
-
-		// 动态绑定端口的操作本质上是荒谬的，因为即使我们使用内核为我们找到一个端口，我们也试图用同一个端口号来绑定多个协议（以及潜在的多个地址）。
-		// 我们在这里设置了一些重试，因为这在繁忙的单元测试中经常会出现瞬时错误。
-		limit := 1
-		if conf.BindPort == 0 {
-			limit = 10
-		}
-
-		nt, err := makeNetRetry(limit)
-		if err != nil {
-			return nil, fmt.Errorf("无法设置网络传输: %v", err)
-		}
-		if conf.BindPort == 0 {
-			// 如果是0,那么NewNetTransport里的端口就是上边随机生成的  GetAutoBindPort多次调用获取的端口是一样的
-			port := nt.GetAutoBindPort()
-			conf.BindPort = port
-			conf.AdvertisePort = port
-			logger.Printf("[DEBUG] 使用动态绑定端口 %d", port)
-		}
-		transport = nt
-	}
-
-	nodeAwareTransport, ok := transport.(NodeAwareTransport)
-	if !ok {
-		logger.Printf("[DEBUG] memberlist: 配置的transport不是一个NodeAwareTransport，一些功能可能无法正常工作。")
-		nodeAwareTransport = &shimNodeAwareTransport{transport}
-	}
-
-	if len(conf.Label) > LabelMaxSize {
-		return nil, fmt.Errorf("不能使用 %q 作为标签: 太长了", conf.Label)
-	}
-
-	if conf.Label != "" {
-		nodeAwareTransport = &labelWrappedTransport{
-			label:              conf.Label,
-			NodeAwareTransport: nodeAwareTransport,
-		}
-	}
-
-	m := &Members{
-		config:               conf,
-		shutdownCh:           make(chan struct{}),
-		leaveBroadcast:       make(chan struct{}, 1), //
-		transport:            nodeAwareTransport,
-		handoffCh:            make(chan struct{}, 1),
-		highPriorityMsgQueue: list.New(), // 高优先级消息队列
-		lowPriorityMsgQueue:  list.New(), // 低优先级消息队列
-		nodeMap:              make(map[string]*nodeState),
-		nodeTimers:           make(map[string]*suspicion),
-		Awareness:            pkg.NewAwareness(conf.AwarenessMaxMultiplier), // 感知对象
-		ackHandlers:          make(map[uint32]*ackHandler),
-		broadcasts:           &queue_broadcast.TransmitLimitedQueue{RetransmitMult: conf.RetransmitMult},
-		logger:               logger,
-	}
-	m.broadcasts.NumNodes = func() int {
-		return m.estNumNodes()
-	}
-
-	// 设置广播地址
-	if _, _, err := m.refreshAdvertise(); err != nil {
-		return nil, err
-	}
-
-	go m.streamListen()  // pull 模式
-	go m.packetListen()  // 直接消息传递
-	go m.packetHandler() //TODO 用于处理消息
-	return m, nil
-}
-
-// Create 不会链接其他节点、但会开启listeners,允许其他节点加入；之后Config不应该被改变
-func Create(conf *Config) (*Members, error) {
-	m, err := newMembers(conf) // ok
-	if err != nil {
-		return nil, err
-	}
-	if err := m.setAlive(); err != nil {
-		m.Shutdown()
-		return nil, err
-	}
-	m.schedule() // 开启各种定时器
-	return m, nil
+	Logger *log.Logger
 }
 
 // Join is used to take an existing Members and attempt to join a cluster
 // by contacting all the given hosts and performing a state sync. Initially,
 // the Members only contains our own state, so doing this will cause
-// remote nodes to become aware of the existence of this node, effectively
+// remote Nodes to become aware of the existence of this node, effectively
 // joining the cluster.
 //
 // This returns the number of hosts successfully contacted and an error if
@@ -252,22 +96,22 @@ func (m *Members) Join(existing []string) (int, error) {
 	numSuccess := 0
 	var errs error
 	for _, exist := range existing {
-		addrs, err := m.resolveAddr(exist)
+		Addrs, err := m.ResolveAddr(exist)
 		if err != nil {
 			err = fmt.Errorf("解析地址失败 %s: %v", exist, err)
 			errs = multierror.Append(errs, err)
-			m.logger.Printf("[WARN] memberlist: %v", err)
+			m.Logger.Printf("[WARN] memberlist: %v", err)
 			continue
 		}
 
-		for _, addr := range addrs {
-			var _ = ipPort{}
-			hp := pkg.JoinHostPort(addr.ip.String(), addr.port)
-			a := Address{Addr: hp, Name: addr.nodeName}
-			if err := m.pushPullNode(a, true); err != nil {
+		for _, Addr := range Addrs {
+			var _ = IpPort{}
+			hp := pkg.JoinHostPort(Addr.IP.String(), Addr.Port)
+			a := Address{Addr: hp, Name: Addr.NodeName}
+			if err := m.PushPullNode(a, true); err != nil {
 				err = fmt.Errorf("加入失败 %s: %v", a.Addr, err)
 				errs = multierror.Append(errs, err)
-				m.logger.Printf("[DEBUG] memberlist: %v", err)
+				m.Logger.Printf("[DEBUG] memberlist: %v", err)
 				continue
 			}
 			numSuccess++
@@ -280,17 +124,17 @@ func (m *Members) Join(existing []string) (int, error) {
 	return numSuccess, errs
 }
 
-// ipPort 希望加入的节点信息
-type ipPort struct {
-	ip       net.IP
-	port     uint16
-	nodeName string // optional
+// IpPort 希望加入的节点信息
+type IpPort struct {
+	IP       net.IP
+	Port     uint16
+	NodeName string // optional
 }
 
 // tcpLookupIP 是一个辅助工具，用于启动对指定主机的基于TCP的DNS查询。
 // 内置的Go解析器将首先进行UDP查询，只有在响应设置了truncate bit时才会使用TCP，这在像Consul的DNS服务器上并不常见。
 // 通过直接进行TCP查询，我们得到了最大的主机列表加入的最佳机会。由于加入是相对罕见的事件，所以做这个相当昂贵的操作是可以的。
-func (m *Members) tcpLookupIP(host string, defaultPort uint16, nodeName string) ([]ipPort, error) {
+func (m *Members) tcpLookupIP(host string, defaultPort uint16, nodeName string) ([]IpPort, error) {
 	// Don't attempt any TCP lookups against non-fully qualified domain
 	// names, since those will likely come from the resolv.conf file.
 	if !strings.Contains(host, ".") {
@@ -305,13 +149,13 @@ func (m *Members) tcpLookupIP(host string, defaultPort uint16, nodeName string) 
 	}
 
 	// See if we can find a server to try.
-	cc, err := dns.ClientConfigFromFile(m.config.DNSConfigPath)
+	cc, err := dns.ClientConfigFromFile(m.Config.DNSConfigPath)
 	if err != nil {
 		return nil, err
 	}
 	if len(cc.Servers) > 0 {
-		// We support host:port in the DNS config, but need to add the
-		// default port if one is not supplied.
+		// We support host:Port in the DNS Config, but need to add the
+		// default Port if one is not supplied.
 		server := cc.Servers[0]
 		if !pkg.HasPort(server) {
 			server = net.JoinHostPort(server, cc.Port)
@@ -328,15 +172,15 @@ func (m *Members) tcpLookupIP(host string, defaultPort uint16, nodeName string) 
 		}
 
 		// Handle any IPs we get back that we can attempt to join.
-		var ips []ipPort
+		var ips []IpPort
 		for _, r := range in.Answer {
 			switch rr := r.(type) {
 			case *dns.A:
-				ips = append(ips, ipPort{ip: rr.A, port: defaultPort, nodeName: nodeName})
+				ips = append(ips, IpPort{IP: rr.A, Port: defaultPort, NodeName: nodeName})
 			case *dns.AAAA:
-				ips = append(ips, ipPort{ip: rr.AAAA, port: defaultPort, nodeName: nodeName})
+				ips = append(ips, IpPort{IP: rr.AAAA, Port: defaultPort, NodeName: nodeName})
 			case *dns.CNAME:
-				m.logger.Printf("[DEBUG] memberlist: Ignoring CNAME RR in TCP-first answer for '%s'", host)
+				m.Logger.Printf("[DEBUG] memberlist: Ignoring CNAME RR in TCP-first answer for '%s'", host)
 			}
 		}
 		return ips, nil
@@ -345,9 +189,9 @@ func (m *Members) tcpLookupIP(host string, defaultPort uint16, nodeName string) 
 	return nil, nil
 }
 
-// resolveAddr is used to resolve the address into an address,
-// port, and error. If no port is given, use the default
-func (m *Members) resolveAddr(hostStr string) ([]ipPort, error) {
+// ResolveAddr is used to resolve the Address into an Address,
+// Port, and error. If no Port is given, use the default
+func (m *Members) ResolveAddr(hostStr string) ([]IpPort, error) {
 	// 首先去掉任何leading节点名称。这是可选的。
 	nodeName := ""
 	slashIdx := strings.Index(hostStr, "/") // 127.0.0.1:8000       -1
@@ -360,7 +204,7 @@ func (m *Members) resolveAddr(hostStr string) ([]ipPort, error) {
 	}
 
 	// 这将捕获所提供的端口，或默认的端口。
-	hostStr = pkg.EnsurePort(hostStr, m.config.BindPort) // 8000
+	hostStr = pkg.EnsurePort(hostStr, m.Config.BindPort) // 8000
 	host, sport, err := net.SplitHostPort(hostStr)
 	if err != nil {
 		return nil, err
@@ -372,14 +216,14 @@ func (m *Members) resolveAddr(hostStr string) ([]ipPort, error) {
 	port := uint16(lport)
 
 	if ip := net.ParseIP(host); ip != nil {
-		return []ipPort{
-			ipPort{ip: ip, port: port, nodeName: nodeName},
+		return []IpPort{
+			IpPort{IP: ip, Port: port, NodeName: nodeName},
 		}, nil
 	}
 	// 尝试使用tcp 解析
 	ips, err := m.tcpLookupIP(host, port, nodeName)
 	if err != nil {
-		m.logger.Printf("[DEBUG] memberlist: TCP-first lookup 失败'%s', falling back to UDP: %s", hostStr, err)
+		m.Logger.Printf("[DEBUG] memberlist: TCP-first lookup 失败'%s', falling back to UDP: %s", hostStr, err)
 	}
 	if len(ips) > 0 {
 		return ips, nil
@@ -390,55 +234,55 @@ func (m *Members) resolveAddr(hostStr string) ([]ipPort, error) {
 	if err != nil {
 		return nil, err
 	}
-	ips = make([]ipPort, 0, len(ans))
+	ips = make([]IpPort, 0, len(ans))
 	for _, ip := range ans {
-		ips = append(ips, ipPort{ip: ip, port: port, nodeName: nodeName})
+		ips = append(ips, IpPort{IP: ip, Port: port, NodeName: nodeName})
 	}
 	return ips, nil
 }
 
-// setAlive 用于将此节点标记为活动节点。这就像我们自己的network channel收到一个alive通知一样。
-func (m *Members) setAlive() error {
+// SetAlive 用于将此节点标记为活动节点。这就像我们自己的network channel收到一个Alive通知一样。
+func (m *Members) SetAlive() error {
 	//TODO 获取广播地址？会一直变么
-	addr, port, err := m.refreshAdvertise()
+	Addr, port, err := m.refreshAdvertise()
 	if err != nil {
 		return err
 	}
 
 	// 检查是不是IPv4、IPv6地址
-	ipAddr, err := sockaddr.NewIPAddr(addr.String())
+	ipAddr, err := sockAddr.NewIPAddr(Addr.String())
 	if err != nil {
 		return fmt.Errorf("解析通信地址失败: %v", err)
 	}
-	ifAddrs := []sockaddr.IfAddr{
-		sockaddr.IfAddr{
+	ifAddrs := []sockAddr.IfAddr{
+		sockAddr.IfAddr{
 			SockAddr: ipAddr,
 		},
 	}
-	// 返回匹配和不匹配的ifaddr列表，其中包含rfc指定的相关特征。
-	_, publicIfs, err := sockaddr.IfByRFC("6890", ifAddrs)
-	if len(publicIfs) > 0 && !m.config.EncryptionEnabled() {
-		m.logger.Printf("[WARN] memberlist: 绑定到公共地址而不加密!")
+	// 返回匹配和不匹配的ifAddr列表，其中包含rfc指定的相关特征。
+	_, publicIfs, err := sockAddr.IfByRFC("6890", ifAddrs)
+	if len(publicIfs) > 0 && !m.Config.EncryptionEnabled() {
+		m.Logger.Printf("[WARN] memberlist: 绑定到公共地址而不加密!")
 	}
 
 	// 判断元数据的大小。
 	var meta []byte
-	if m.config.Delegate != nil {
-		meta = m.config.Delegate.NodeMeta(MetaMaxSize)
+	if m.Config.Delegate != nil {
+		meta = m.Config.Delegate.NodeMeta(MetaMaxSize)
 		if len(meta) > MetaMaxSize {
 			panic("节点元数据长度超过限制")
 		}
 	}
 
-	a := alive{
+	a := Alive{
 		Incarnation: m.nextIncarnation(), // 1 周期性的full state sync，使用incarnation number去调协
-		Node:        m.config.Name,       // 节点名字、唯一
-		Addr:        addr,
+		Node:        m.Config.Name,       // 节点名字、唯一
+		Addr:        Addr,
 		Port:        uint16(port),
 		Meta:        meta,
-		Vsn:         m.config.BuildVsnArray(),
+		Vsn:         m.Config.BuildVsnArray(),
 	}
-	m.aliveNode(&a, nil, true) // 存储节点state,广播存活消息
+	m.AliveNode(&a, nil, true) // 存储节点state,广播存活消息
 
 	return nil
 }
@@ -451,39 +295,32 @@ func (m *Members) getAdvertise() (net.IP, uint16) {
 }
 
 // 设置广播地址
-func (m *Members) setAdvertise(addr net.IP, port int) {
+func (m *Members) setAdvertise(Addr net.IP, port int) {
 	m.advertiseLock.Lock()
 	defer m.advertiseLock.Unlock()
-	m.advertiseAddr = addr
+	m.advertiseAddr = Addr
 	m.advertisePort = uint16(port)
 }
 
 // 刷新广播地址
 func (m *Members) refreshAdvertise() (net.IP, int, error) {
-	addr, port, err := m.transport.FinalAdvertiseAddr(m.config.AdvertiseAddr, m.config.AdvertisePort) // "" 8000
-	fmt.Println("refreshAdvertise [sockaddr.GetPrivateIP] ---->", addr, port)
+	Addr, port, err := m.Transport.FinalAdvertiseAddr(m.Config.AdvertiseAddr, m.Config.AdvertisePort) // "" 8000
+	fmt.Println("refreshAdvertise [sockAddr.GetPrivateIP] ---->", Addr, port)
 	if err != nil {
 		return nil, 0, fmt.Errorf("获取地址失败: %v", err)
 	}
-	m.setAdvertise(addr, port)
-	return addr, port, nil
-}
-
-// Deprecated: SendTo is deprecated in favor of SendBestEffort, which requires a node to
-// target. If you don't have a node then use SendToAddress.
-func (m *Members) SendTo(to net.Addr, msg []byte) error {
-	a := Address{Addr: to.String(), Name: ""}
-	return m.SendToAddress(a, msg)
+	m.setAdvertise(Addr, port)
+	return Addr, port, nil
 }
 
 func (m *Members) SendToAddress(a Address, msg []byte) error {
 	// Encode as a user message
 	buf := make([]byte, 1, len(msg)+1)
-	buf[0] = byte(userMsg)
+	buf[0] = byte(UserMsg)
 	buf = append(buf, msg...)
 
 	// Send the message
-	return m.rawSendMsgPacket(a, nil, buf)
+	return m.RawSendMsgPacket(a, nil, buf)
 }
 
 // Deprecated: SendToUDP is deprecated in favor of SendBestEffort.
@@ -496,22 +333,22 @@ func (m *Members) SendToTCP(to *Node, msg []byte) error {
 	return m.SendReliable(to, msg)
 }
 
-// SendBestEffort uses the unreliable packet-oriented interface of the transport
+// SendBestEffort uses the unreliable packet-oriented interface of the Transport
 // to target a user message at the given node (this does not use the gossip
 // mechanism). The maximum size of the message depends on the configured
 // UDPBufferSize for this memberlist instance.
 func (m *Members) SendBestEffort(to *Node, msg []byte) error {
 	// Encode as a user message
 	buf := make([]byte, 1, len(msg)+1)
-	buf[0] = byte(userMsg)
+	buf[0] = byte(UserMsg)
 	buf = append(buf, msg...)
 
 	// Send the message
 	a := Address{Addr: to.Address(), Name: to.Name}
-	return m.rawSendMsgPacket(a, to, buf)
+	return m.RawSendMsgPacket(a, to, buf)
 }
 
-// SendReliable uses the reliable stream-oriented interface of the transport to
+// SendReliable uses the reliable stream-oriented interface of the Transport to
 // target a user message at the given node (this does not use the gossip
 // mechanism). Delivery is guaranteed if no error is returned, and there is no
 // limit on the size of the message.
@@ -519,17 +356,21 @@ func (m *Members) SendReliable(to *Node, msg []byte) error {
 	return m.sendUserMsg(to.FullAddress(), msg)
 }
 
-// NumMembers returns the number of alive nodes currently known. Between
-// the time of calling this and calling Members, the number of alive nodes
-// may have changed, so this shouldn't be used to determine how many
-// members will be returned by Members.
-func (m *Members) NumMembers() (alive int) {
-	m.nodeLock.RLock()
-	defer m.nodeLock.RUnlock()
+// Deprecated: SendTo is deprecated in favor of SendBestEffort, which requires a node to
+// target. If you don't have a node then use SendToAddress.
+func (m *Members) SendTo(to net.Addr, msg []byte) error {
+	a := Address{Addr: to.String(), Name: ""}
+	return m.SendToAddress(a, msg)
+}
 
-	for _, n := range m.nodes {
+// NumMembers 返回当前已知的存活结点
+func (m *Members) NumMembers() (Alive int) {
+	m.NodeLock.RLock()
+	defer m.NodeLock.RUnlock()
+
+	for _, n := range m.Nodes {
 		if !n.DeadOrLeft() {
-			alive++
+			Alive++
 		}
 	}
 
@@ -557,26 +398,26 @@ func (m *Members) Leave(timeout time.Duration) error {
 	if !m.hasLeft() {
 		atomic.StoreInt32(&m.leave, 1)
 
-		m.nodeLock.Lock()
-		state, ok := m.nodeMap[m.config.Name]
-		m.nodeLock.Unlock()
+		m.NodeLock.Lock()
+		state, ok := m.NodeMap[m.Config.Name]
+		m.NodeLock.Unlock()
 		if !ok {
-			m.logger.Printf("[WARN] memberlist: Leave but we're not in the node map.")
+			m.Logger.Printf("[WARN] memberlist: Leave but we're not in the node map.")
 			return nil
 		}
 
-		// This dead message is special, because Node and From are the
-		// same. This helps other nodes figure out that a node left
-		// intentionally. When Node equals From, other nodes know for
+		// This Dead message is special, because Node and From are the
+		// same. This helps other Nodes figure out that a node left
+		// intentionally. When Node equals From, other Nodes know for
 		// sure this node is gone.
-		d := dead{
+		d := Dead{
 			Incarnation: state.Incarnation,
 			Node:        state.Name,
 			From:        state.Name,
 		}
-		m.deadNode(&d)
+		m.DeadNode(&d)
 
-		// Block until the broadcast goes out
+		// 阻止直到广播出去
 		if m.anyAlive() {
 			var timeoutCh <-chan time.Time
 			if timeout > 0 {
@@ -593,12 +434,12 @@ func (m *Members) Leave(timeout time.Duration) error {
 	return nil
 }
 
-// Check for any other alive node.
+// 检查是否有存活结点、非本机
 func (m *Members) anyAlive() bool {
-	m.nodeLock.RLock()
-	defer m.nodeLock.RUnlock()
-	for _, n := range m.nodes {
-		if !n.DeadOrLeft() && n.Name != m.config.Name {
+	m.NodeLock.RLock()
+	defer m.NodeLock.RUnlock()
+	for _, n := range m.Nodes {
+		if !n.DeadOrLeft() && n.Name != m.Config.Name {
 			return true
 		}
 	}
@@ -612,7 +453,7 @@ func (m *Members) GetHealthScore() int {
 
 // ProtocolVersion 返回当前的协议版本
 func (m *Members) ProtocolVersion() uint8 {
-	return m.config.ProtocolVersion
+	return m.Config.ProtocolVersion
 }
 
 // Shutdown 优雅的退出集群、发送Leave消息【幂等】
@@ -624,8 +465,8 @@ func (m *Members) Shutdown() error {
 		return nil
 	}
 	// 设置为1
-	if err := m.transport.Shutdown(); err != nil {
-		m.logger.Printf("[错误] 停止transport: %v", err)
+	if err := m.Transport.Shutdown(); err != nil {
+		m.Logger.Printf("[错误] 停止Transport: %v", err)
 	}
 
 	atomic.StoreInt32(&m.shutdown, 1) // 设置为1 ;执行了两次

@@ -30,10 +30,14 @@ func main() {
 		panic("Failed to join cluster: " + err.Error())
 	}
 	time.Sleep(time.Second * 10)
-	for _, member := range list.Members() { // 读取的m.nodes列表
+	for _, member := range list.Members() { // 读取的m.Nodes列表
 		fmt.Printf("Member: %s %s\n", member.Name, member.Addr)
 	}
 	fmt.Println(n)
 	time.Sleep(time.Second * 1000)
 	list.GetHealthScore()
+	list.NumMembers()
+	list.Members()
+	list.ProtocolVersion()
+	list.LocalNode() // 返回本地结点的名字
 }

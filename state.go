@@ -35,14 +35,14 @@ type Node struct {
 	DCur  uint8         // Current version delegate is speaking
 }
 
-// Address returns the host:port form of a node's address, suitable for use
-// with a transport.
+// Address returns the host:Port form of a node's Address, suitable for use
+// with a Transport.
 func (n *Node) Address() string {
 	return pkg.JoinHostPort(n.Addr.String(), n.Port)
 }
 
-// FullAddress returns the node name and host:port form of a node's address,
-// suitable for use with a transport.
+// FullAddress returns the node name and host:Port form of a node's Address,
+// suitable for use with a Transport.
 func (n *Node) FullAddress() Address {
 	return Address{
 		Addr: pkg.JoinHostPort(n.Addr.String(), n.Port),
@@ -56,37 +56,37 @@ func (n *Node) String() string {
 }
 
 // NodeState 管理其他节点的状态视图
-type nodeState struct {
+type NodeState struct {
 	Node
 	Incarnation uint32        // Last known incarnation number
 	State       NodeStateType // 当前的状态
 	StateChange time.Time     // Time last state change happened
 }
 
-// Address returns the host:port form of a node's address, suitable for use
-// with a transport.
-func (n *nodeState) Address() string {
+// Address returns the host:Port form of a node's Address, suitable for use
+// with a Transport.
+func (n *NodeState) Address() string {
 	return n.Node.Address()
 }
 
-// FullAddress returns the node name and host:port form of a node's address,
-// suitable for use with a transport.
-func (n *nodeState) FullAddress() Address {
+// FullAddress returns the node name and host:Port form of a node's Address,
+// suitable for use with a Transport.
+func (n *NodeState) FullAddress() Address {
 	return n.Node.FullAddress()
 }
 
-func (n *nodeState) DeadOrLeft() bool {
+func (n *NodeState) DeadOrLeft() bool {
 	return n.State == StateDead || n.State == StateLeft
 }
 
-// ackHandler 注册确认、否认处理函数
-type ackHandler struct {
+// AckHandler 注册确认、否认处理函数
+type AckHandler struct {
 	ackFn  func([]byte, time.Time)
 	nackFn func()
 	timer  *time.Timer
 }
 
-// NoPingResponseError is used to indicate a 'ping' packet was
+// NoPingResponseError is used to indicate a 'Ping' packet was
 // successfully issued but no response was received
 type NoPingResponseError struct {
 	node string
@@ -96,8 +96,8 @@ func (f NoPingResponseError) Error() string {
 	return fmt.Sprintf("No response from node %s", f.node)
 }
 
-// 开启定时器
-func (m *Members) schedule() {
+// Schedule 开启定时器
+func (m *Members) Schedule() {
 	m.tickerLock.Lock()
 	defer m.tickerLock.Unlock()
 	if len(m.tickers) > 0 {
@@ -107,22 +107,22 @@ func (m *Members) schedule() {
 	stopCh := make(chan struct{})
 
 	// 开始定时探活
-	if m.config.ProbeInterval > 0 {
-		t := time.NewTicker(m.config.ProbeInterval) // config.go:190 1s
-		go m.triggerFunc(m.config.ProbeInterval, t.C, stopCh, m.probe)
-		//m.probe()
+	if m.Config.ProbeInterval > 0 {
+		t := time.NewTicker(m.Config.ProbeInterval) // Config.go:190 1s
+		go m.triggerFunc(m.Config.ProbeInterval, t.C, stopCh, m.probe)
+		//m.Probe()
 		m.tickers = append(m.tickers, t)
 	}
 
-	if m.config.PushPullInterval > 0 {
+	if m.Config.PushPullInterval > 0 {
 		// 开始 push、pull 触发器
-		go m.pushPullTrigger(stopCh)
+		go m.PushPullTrigger(stopCh)
 	}
 
 	// gossip 定时器
-	if m.config.GossipInterval > 0 && m.config.GossipNodes > 0 { // 每隔100ms,将消息随机发送到3个节点
-		t := time.NewTicker(m.config.GossipInterval)
-		go m.triggerFunc(m.config.GossipInterval, t.C, stopCh, m.gossip)
+	if m.Config.GossipInterval > 0 && m.Config.GossipNodes > 0 { // 每隔100ms,将消息随机发送到3个节点
+		t := time.NewTicker(m.Config.GossipInterval)
+		go m.triggerFunc(m.Config.GossipInterval, t.C, stopCh, m.gossip)
 		m.tickers = append(m.tickers, t)
 	}
 	if len(m.tickers) > 0 {
@@ -150,8 +150,8 @@ func (m *Members) triggerFunc(stagger time.Duration, C <-chan time.Time, stop <-
 }
 
 // 周期性的push\pull 直到收到stop信号。不使用triggerFunc，因为触发时间不固定，基于集群大小避免网络堵塞
-func (m *Members) pushPullTrigger(stop <-chan struct{}) {
-	interval := m.config.PushPullInterval
+func (m *Members) PushPullTrigger(stop <-chan struct{}) {
+	interval := m.Config.PushPullInterval
 	// 开始时 随机睡眠0~randStagger
 	randStagger := time.Duration(uint64(rand.Int63()) % uint64(interval))
 	select {
@@ -161,10 +161,10 @@ func (m *Members) pushPullTrigger(stop <-chan struct{}) {
 	}
 	// 使用动态的ticker
 	for {
-		tickTime := pushPullScale(interval, m.estNumNodes())
+		tickTime := PushPullScale(interval, m.EstNumNodes())
 		select {
 		case <-time.After(tickTime):
-			m.pushPull()
+			m.PushPull()
 		case <-stop:
 			return
 		}
@@ -192,57 +192,57 @@ func (m *Members) deschedule() {
 }
 
 // 用于对所有节点的探活
-func (m *Members) probe() {
+func (m *Members) Probe() {
 	// 探测过的数量
 	numCheck := 0
 START:
-	m.nodeLock.RLock()
+	m.NodeLock.RLock()
 
 	// 当所有的节点都检查完了一遍
-	if numCheck >= len(m.nodes) {
-		m.nodeLock.RUnlock()
+	if numCheck >= len(m.Nodes) {
+		m.NodeLock.RUnlock()
 		return
 	}
 
-	if m.probeIndex >= len(m.nodes) {
-		m.nodeLock.RUnlock()
-		m.resetNodes() // 清理无效节点,打乱顺序
+	if m.probeIndex >= len(m.Nodes) {
+		m.NodeLock.RUnlock()
+		m.ResetNodes() // 清理无效节点,打乱顺序
 		m.probeIndex = 0
 		numCheck++
 		goto START
 	}
 	// 是否跳过节点探测
 	skip := false
-	var node nodeState
+	var node NodeState
 
-	node = *m.nodes[m.probeIndex]
-	// 本机 或 节点在dead、left的状态都跳过
-	if node.Name == m.config.Name {
+	node = *m.Nodes[m.probeIndex]
+	// 本机 或 节点在Dead、left的状态都跳过
+	if node.Name == m.Config.Name {
 		skip = true
 	} else if node.DeadOrLeft() {
 		skip = true
 	}
 
-	m.nodeLock.RUnlock()
+	m.NodeLock.RUnlock()
 	m.probeIndex++
 	if skip {
 		numCheck++
 		goto START
 	}
-	m.probeNode(&node)
+	m.ProbeNode(&node)
 }
 
 // OK
-func (m *Members) probeNodeByAddr(addr string) {
-	m.nodeLock.RLock()
-	n := m.nodeMap[addr]
-	m.nodeLock.RUnlock()
+func (m *Members) ProbeNodeByAddr(Addr string) {
+	m.NodeLock.RLock()
+	n := m.NodeMap[Addr]
+	m.NodeLock.RUnlock()
 
-	m.probeNode(n)
+	m.ProbeNode(n)
 }
 
-// failedRemote 检查错误并决定它是否表明另一端有故障。
-func failedRemote(err error) bool {
+// FailedRemote 检查错误并决定它是否表明另一端有故障。
+func FailedRemote(err error) bool {
 	switch t := err.(type) {
 	case *net.OpError:
 		if strings.HasPrefix(t.Net, "tcp") {
@@ -261,24 +261,24 @@ func failedRemote(err error) bool {
 }
 
 // probeNode 单个节点的故障检查。
-func (m *Members) probeNode(node *nodeState) {
+func (m *Members) ProbeNode(node *NodeState) {
 
 	// 我们使用我们的health awareness来扩展整个探测间隔，
 	// 所以如果我们检测到问题，我们会放慢速度。
 	// 调用我们的探测器可以处理我们运行超过基本间隔的情况，并会跳过错过的刻度。
-	probeInterval := m.Awareness.ScaleTimeout(m.config.ProbeInterval) // 根据健康度、设置探活时间
+	probeInterval := m.Awareness.ScaleTimeout(m.Config.ProbeInterval) // 根据健康度、设置探活时间
 
 	selfAddr, selfPort := m.getAdvertise()
-	ping := ping{
-		SeqNo:      m.nextSeqNo(),
+	ping := Ping{
+		SeqNo:      m.NextSeqNo(),
 		Node:       node.Name,
 		SourceAddr: selfAddr,
 		SourcePort: selfPort,
-		SourceNode: m.config.Name,
+		SourceNode: m.Config.Name,
 	}
-	ackCh := make(chan ackMessage, m.config.IndirectChecks+1)
-	nackCh := make(chan struct{}, m.config.IndirectChecks+1)
-	m.setProbeChannels(ping.SeqNo, ackCh, nackCh, probeInterval)
+	ackCh := make(chan AckMessage, m.Config.IndirectChecks+1)
+	nackCh := make(chan struct{}, m.Config.IndirectChecks+1)
+	m.SetProbeChannels(ping.SeqNo, ackCh, nackCh, probeInterval)
 
 	// Mark the sent time here, which should be after any pre-processing but
 	// before system calls to do the actual send. This probably over-reports
@@ -287,11 +287,11 @@ func (m *Members) probeNode(node *nodeState) {
 	// which was not desirable.
 	sent := time.Now()
 
-	// Send a ping to the node. If this node looks like it's suspect or dead,
-	// also tack on a suspect message so that it has a chance to refute as
+	// Send a Ping to the node. If this node looks like it's Suspect or Dead,
+	// also tack on a Suspect message so that it has a chance to refute as
 	// soon as possible.
-	deadline := sent.Add(probeInterval)
-	addr := node.Address()
+	Deadline := sent.Add(probeInterval)
+	Addr := node.Address()
 
 	// Arrange for our self-awareness to get updated.
 	var awarenessDelta int
@@ -299,9 +299,9 @@ func (m *Members) probeNode(node *nodeState) {
 		m.Awareness.ApplyDelta(awarenessDelta)
 	}()
 	if node.State == StateAlive {
-		if err := m.encodeAndSendMsg(node.FullAddress(), pingMsg, &ping); err != nil {
-			m.logger.Printf("[错误] memberlist: Failed to send ping: %s", err)
-			if failedRemote(err) {
+		if err := m.encodeAndSendMsg(node.FullAddress(), PingMsg, &ping); err != nil {
+			m.Logger.Printf("[错误] memberlist: Failed to send Ping: %s", err)
+			if FailedRemote(err) {
 				goto HANDLE_REMOTE_FAILURE
 			} else {
 				return
@@ -309,24 +309,24 @@ func (m *Members) probeNode(node *nodeState) {
 		}
 	} else {
 		var msgs [][]byte
-		if buf, err := encode(pingMsg, &ping); err != nil {
-			m.logger.Printf("[错误] memberlist: Failed to encode ping message: %s", err)
+		if buf, err := Encode(PingMsg, &ping); err != nil {
+			m.Logger.Printf("[错误] memberlist: Failed to Encode Ping message: %s", err)
 			return
 		} else {
 			msgs = append(msgs, buf.Bytes())
 		}
-		s := suspect{Incarnation: node.Incarnation, Node: node.Name, From: m.config.Name}
-		if buf, err := encode(suspectMsg, &s); err != nil {
-			m.logger.Printf("[错误] memberlist: Failed to encode suspect message: %s", err)
+		s := Suspect{Incarnation: node.Incarnation, Node: node.Name, From: m.Config.Name}
+		if buf, err := Encode(SuspectMsg, &s); err != nil {
+			m.Logger.Printf("[错误] memberlist: Failed to Encode Suspect message: %s", err)
 			return
 		} else {
 			msgs = append(msgs, buf.Bytes())
 		}
 
-		compound := makeCompoundMessage(msgs)
-		if err := m.rawSendMsgPacket(node.FullAddress(), &node.Node, compound.Bytes()); err != nil {
-			m.logger.Printf("[错误] memberlist: Failed to send compound ping and suspect message to %s: %s", addr, err)
-			if failedRemote(err) {
+		compound := MakeCompoundMessage(msgs)
+		if err := m.RawSendMsgPacket(node.FullAddress(), &node.Node, compound.Bytes()); err != nil {
+			m.Logger.Printf("[错误] memberlist: Failed to send compound Ping and Suspect message to %s: %s", Addr, err)
+			if FailedRemote(err) {
 				goto HANDLE_REMOTE_FAILURE
 			} else {
 				return
@@ -335,7 +335,7 @@ func (m *Members) probeNode(node *nodeState) {
 	}
 
 	// Arrange for our self-awareness to get updated. At this point we've
-	// sent the ping, so any return statement means the probe succeeded
+	// sent the Ping, so any return statement means the probe succeeded
 	// which will improve our health until we get to the failure scenarios
 	// at the end of this function, which will alter this delta variable
 	// accordingly.
@@ -345,9 +345,9 @@ func (m *Members) probeNode(node *nodeState) {
 	select {
 	case v := <-ackCh:
 		if v.Complete == true {
-			if m.config.Ping != nil {
+			if m.Config.Ping != nil {
 				rtt := v.Timestamp.Sub(sent)
-				m.config.Ping.NotifyPingComplete(&node.Node, rtt, v.Payload)
+				m.Config.Ping.NotifyPingComplete(&node.Node, rtt, v.Payload)
 			}
 			return
 		}
@@ -357,37 +357,37 @@ func (m *Members) probeNode(node *nodeState) {
 		if v.Complete == false {
 			ackCh <- v
 		}
-	case <-time.After(m.config.ProbeTimeout):
+	case <-time.After(m.Config.ProbeTimeout):
 		// Note that we don't scale this timeout based on awareness and
 		// the health score. That's because we don't really expect waiting
 		// longer to help get UDP through. Since health does extend the
 		// probe interval it will give the TCP fallback more time, which
 		// is more active in dealing with lost packets, and it gives more
 		// time to wait for indirect acks/nacks.
-		m.logger.Printf("[DEBUG] memberlist: Failed ping: %s (timeout reached)", node.Name)
+		m.Logger.Printf("[DEBUG] memberlist: Failed Ping: %s (timeout reached)", node.Name)
 	}
 
 HANDLE_REMOTE_FAILURE:
-	// Get some random live nodes.
-	m.nodeLock.RLock()
-	kNodes := kRandomNodes(m.config.IndirectChecks, m.nodes, func(n *nodeState) bool {
-		return n.Name == m.config.Name ||
+	// Get some random live Nodes.
+	m.NodeLock.RLock()
+	kNodes := KRandomNodes(m.Config.IndirectChecks, m.Nodes, func(n *NodeState) bool {
+		return n.Name == m.Config.Name ||
 			n.Name == node.Name ||
 			n.State != StateAlive
 	})
-	m.nodeLock.RUnlock()
+	m.NodeLock.RUnlock()
 
-	// Attempt an indirect ping.
+	// Attempt an indirect Ping.
 	expectedNacks := 0
 	selfAddr, selfPort = m.getAdvertise()
-	ind := indirectPingReq{
+	ind := IndirectPingReq{
 		SeqNo:      ping.SeqNo,
 		Target:     node.Addr,
 		Port:       node.Port,
 		Node:       node.Name,
 		SourceAddr: selfAddr,
 		SourcePort: selfPort,
-		SourceNode: m.config.Name,
+		SourceNode: m.Config.Name,
 	}
 	for _, peer := range kNodes {
 		// We only expect nack to be sent from peers who understand
@@ -396,35 +396,35 @@ HANDLE_REMOTE_FAILURE:
 			expectedNacks++
 		}
 
-		if err := m.encodeAndSendMsg(peer.FullAddress(), indirectPingMsg, &ind); err != nil {
-			m.logger.Printf("[错误] memberlist: Failed to send indirect ping: %s", err)
+		if err := m.encodeAndSendMsg(peer.FullAddress(), IndirectPingMsg, &ind); err != nil {
+			m.Logger.Printf("[错误] memberlist: Failed to send indirect Ping: %s", err)
 		}
 	}
 
 	// Also make an attempt to contact the node directly over TCP. This
 	// helps prevent confused clients who get isolated from UDP traffic
 	// but can still speak TCP (which also means they can possibly report
-	// misinformation to other nodes via anti-entropy), avoiding flapping in
+	// misinformation to other Nodes via anti-entropy), avoiding flapping in
 	// the cluster.
 	//
-	// This is a little unusual because we will attempt a TCP ping to any
+	// This is a little unusual because we will attempt a TCP Ping to any
 	// member who understands version 3 of the protocol, regardless of
 	// which 协议版本 we are speaking. That's why we've included a
-	// config option to turn this off if desired.
+	// Config option to turn this off if desired.
 	fallbackCh := make(chan bool, 1)
 
-	disableTcpPings := m.config.DisableTcpPings ||
-		(m.config.DisableTcpPingsForNode != nil && m.config.DisableTcpPingsForNode(node.Name))
+	disableTcpPings := m.Config.DisableTcpPings ||
+		(m.Config.DisableTcpPingsForNode != nil && m.Config.DisableTcpPingsForNode(node.Name))
 	if (!disableTcpPings) && (node.PMax >= 3) {
 		go func() {
 			defer close(fallbackCh)
-			didContact, err := m.sendPingAndWaitForAck(node.FullAddress(), ping, deadline)
+			didContact, err := m.SendPingAndWaitForAck(node.FullAddress(), ping, Deadline)
 			if err != nil {
 				var to string
 				if ne, ok := err.(net.Error); ok && ne.Timeout() {
 					to = fmt.Sprintf("timeout %s: ", probeInterval)
 				}
-				m.logger.Printf("[错误] memberlist: Failed fallback ping: %s%s", to, err)
+				m.Logger.Printf("[错误] memberlist: Failed fallback Ping: %s%s", to, err)
 			} else {
 				fallbackCh <- didContact
 			}
@@ -449,7 +449,7 @@ HANDLE_REMOTE_FAILURE:
 	// any additional time here.
 	for didContact := range fallbackCh {
 		if didContact {
-			m.logger.Printf("[WARN] memberlist: Was able to connect to %s but other probes failed, network may be misconfigured", node.Name)
+			m.Logger.Printf("[WARN] memberlist: Was able to connect to %s but other probes failed, network may be misconfigured", node.Name)
 			return
 		}
 	}
@@ -459,7 +459,7 @@ HANDLE_REMOTE_FAILURE:
 	// failed probe as a simple health metric. If we do have peers to nack
 	// verify, then we can use that as a more sophisticated measure of self-
 	// health because we assume them to be working, and they can help us
-	// decide if the probed node was really dead or if it was something wrong
+	// decide if the probed node was really Dead or if it was something wrong
 	// with ourselves.
 	awarenessDelta = 0
 	if expectedNacks > 0 {
@@ -470,30 +470,30 @@ HANDLE_REMOTE_FAILURE:
 		awarenessDelta += 1
 	}
 
-	// No acks received from target, suspect it as failed.
-	m.logger.Printf("[INFO] memberlist: Suspect %s has failed, no acks received", node.Name)
-	s := suspect{Incarnation: node.Incarnation, Node: node.Name, From: m.config.Name}
-	m.suspectNode(&s)
+	// No acks received from target, Suspect it as failed.
+	m.Logger.Printf("[INFO] memberlist: Suspect %s has failed, no acks received", node.Name)
+	s := Suspect{Incarnation: node.Incarnation, Node: node.Name, From: m.Config.Name}
+	m.SuspectNode(&s)
 }
 
-// Ping initiates a ping to the node with the specified name.
-func (m *Members) Ping(node string, addr net.Addr) (time.Duration, error) {
-	// Prepare a ping message and setup an ack handler.
+// Ping initiates a Ping to the node with the specified name.
+func (m *Members) Ping(node string, Addr net.Addr) (time.Duration, error) {
+	// Prepare a Ping message and setup an ack handler.
 	selfAddr, selfPort := m.getAdvertise()
-	ping := ping{
-		SeqNo:      m.nextSeqNo(),
+	ping := Ping{
+		SeqNo:      m.NextSeqNo(),
 		Node:       node,
 		SourceAddr: selfAddr,
 		SourcePort: selfPort,
-		SourceNode: m.config.Name,
+		SourceNode: m.Config.Name,
 	}
-	ackCh := make(chan ackMessage, m.config.IndirectChecks+1)
-	m.setProbeChannels(ping.SeqNo, ackCh, nil, m.config.ProbeInterval)
+	ackCh := make(chan AckMessage, m.Config.IndirectChecks+1)
+	m.SetProbeChannels(ping.SeqNo, ackCh, nil, m.Config.ProbeInterval)
 
-	a := Address{Addr: addr.String(), Name: node}
+	a := Address{Addr: Addr.String(), Name: node}
 
-	// Send a ping to the node.
-	if err := m.encodeAndSendMsg(a, pingMsg, &ping); err != nil {
+	// Send a Ping to the node.
+	if err := m.encodeAndSendMsg(a, PingMsg, &ping); err != nil {
 		return 0, err
 	}
 
@@ -508,45 +508,45 @@ func (m *Members) Ping(node string, addr net.Addr) (time.Duration, error) {
 		if v.Complete == true {
 			return v.Timestamp.Sub(sent), nil
 		}
-	case <-time.After(m.config.ProbeTimeout):
+	case <-time.After(m.Config.ProbeTimeout):
 		// Timeout, return an error below.
 	}
 
-	m.logger.Printf("[DEBUG] memberlist: Failed UDP ping: %v (timeout reached)", node)
+	m.Logger.Printf("[DEBUG] memberlist: Failed UDP Ping: %v (timeout reached)", node)
 	return 0, NoPingResponseError{ping.Node}
 }
 
-// resetNodes 清除dead节点,并将节点列表刷新
-func (m *Members) resetNodes() {
-	m.nodeLock.Lock()
-	defer m.nodeLock.Unlock()
+// ResetNodes 清除Dead节点,并将节点列表刷新
+func (m *Members) ResetNodes() {
+	m.NodeLock.Lock()
+	defer m.NodeLock.Unlock()
 
-	// 移除dead node ,超过了dead interval的
-	deadIdx := moveDeadNodes(m.nodes, m.config.GossipToTheDeadTime)
-	// 第一个在m.nodes dead的节点的索引
-	for i := deadIdx; i < len(m.nodes); i++ {
-		delete(m.nodeMap, m.nodes[i].Name)
-		m.nodes[i] = nil
+	// 移除Dead node ,超过了Dead interval的
+	DeadIdx := MoveDeadNodes(m.Nodes, m.Config.GossipToTheDeadTime)
+	// 第一个在m.Nodes Dead的节点的索引
+	for i := DeadIdx; i < len(m.Nodes); i++ {
+		delete(m.NodeMap, m.Nodes[i].Name)
+		m.Nodes[i] = nil
 	}
 
 	// 修剪节点以排除死节点
-	m.nodes = m.nodes[0:deadIdx]
+	m.Nodes = m.Nodes[0:DeadIdx]
 
 	// 更新集群节点数量
-	atomic.StoreUint32(&m.numNodes, uint32(deadIdx))
+	atomic.StoreUint32(&m.numNodes, uint32(DeadIdx))
 
 	// 打乱节点列表
-	shuffleNodes(m.nodes)
+	ShuffleNodes(m.Nodes)
 }
 
 // gossip is invoked every GossipInterval period to broadcast our gossip
-// messages to a few random nodes.
-func (m *Members) gossip() {
+// messages to a few random Nodes.
+func (m *Members) Gossip() {
 
-	// Get some random live, suspect, or recently dead nodes
-	m.nodeLock.RLock()
-	kNodes := kRandomNodes(m.config.GossipNodes, m.nodes, func(n *nodeState) bool {
-		if n.Name == m.config.Name {
+	// Get some random live, Suspect, or recently Dead Nodes
+	m.NodeLock.RLock()
+	kNodes := KRandomNodes(m.Config.GossipNodes, m.Nodes, func(n *NodeState) bool {
+		if n.Name == m.Config.Name {
 			return true
 		}
 
@@ -555,72 +555,72 @@ func (m *Members) gossip() {
 			return false
 
 		case StateDead:
-			return time.Since(n.StateChange) > m.config.GossipToTheDeadTime
+			return time.Since(n.StateChange) > m.Config.GossipToTheDeadTime
 
 		default:
 			return true
 		}
 	})
-	m.nodeLock.RUnlock()
+	m.NodeLock.RUnlock()
 
 	// Compute the bytes available
-	bytesAvail := m.config.UDPBufferSize - compoundHeaderOverhead - labelOverhead(m.config.Label)
-	if m.config.EncryptionEnabled() {
-		bytesAvail -= encryptOverhead(m.encryptionVersion())
+	bytesAvail := m.Config.UDPBufferSize - CompoundHeaderOverhead - LabelOverhead(m.Config.Label)
+	if m.Config.EncryptionEnabled() {
+		bytesAvail -= encryptOverhead(m.EncryptionVersion())
 	}
 
 	for _, node := range kNodes {
-		// Get any pending broadcasts
-		msgs := m.getBroadcasts(compoundOverhead, bytesAvail)
+		// Get any pending Broadcasts
+		msgs := m.getBroadcasts(CompoundOverhead, bytesAvail)
 		if len(msgs) == 0 {
 			return
 		}
 
-		addr := node.Address()
+		Addr := node.Address()
 		if len(msgs) == 1 {
 			// Send single message as is
-			if err := m.rawSendMsgPacket(node.FullAddress(), &node, msgs[0]); err != nil {
-				m.logger.Printf("[错误] memberlist: Failed to send gossip to %s: %s", addr, err)
+			if err := m.RawSendMsgPacket(node.FullAddress(), &node, msgs[0]); err != nil {
+				m.Logger.Printf("[错误] memberlist: Failed to send gossip to %s: %s", Addr, err)
 			}
 		} else {
 			// Otherwise create and send one or more compound messages
-			compounds := makeCompoundMessages(msgs)
+			compounds := MakeCompoundMessages(msgs)
 			for _, compound := range compounds {
-				if err := m.rawSendMsgPacket(node.FullAddress(), &node, compound.Bytes()); err != nil {
-					m.logger.Printf("[错误] memberlist: Failed to send gossip to %s: %s", addr, err)
+				if err := m.RawSendMsgPacket(node.FullAddress(), &node, compound.Bytes()); err != nil {
+					m.Logger.Printf("[错误] memberlist: Failed to send gossip to %s: %s", Addr, err)
 				}
 			}
 		}
 	}
 }
 
-// pushPull is invoked periodically to randomly perform a complete state
+// PushPull is invoked periodically to randomly perform a complete state
 // exchange. Used to ensure a high level of convergence, but is also
 // reasonably expensive as the entire state of this node is exchanged
 // with the other node.
-func (m *Members) pushPull() {
+func (m *Members) PushPull() {
 	// Get a random live node
-	m.nodeLock.RLock()
-	nodes := kRandomNodes(1, m.nodes, func(n *nodeState) bool {
-		return n.Name == m.config.Name ||
+	m.NodeLock.RLock()
+	nodes := KRandomNodes(1, m.Nodes, func(n *NodeState) bool {
+		return n.Name == m.Config.Name ||
 			n.State != StateAlive
 	})
-	m.nodeLock.RUnlock()
+	m.NodeLock.RUnlock()
 
-	// If no nodes, bail
+	// If no Nodes, bail
 	if len(nodes) == 0 {
 		return
 	}
 	node := nodes[0]
 
 	// Attempt a push pull
-	if err := m.pushPullNode(node.FullAddress(), false); err != nil {
-		m.logger.Printf("[错误] memberlist: Push/Pull with %s failed: %s", node.Name, err)
+	if err := m.PushPullNode(node.FullAddress(), false); err != nil {
+		m.Logger.Printf("[错误] memberlist: Push/Pull with %s failed: %s", node.Name, err)
 	}
 }
 
-// pushPullNode 与一个特定的节点进行完整的状态交换。
-func (m *Members) pushPullNode(a Address, join bool) error {
+// PushPullNode 与一个特定的节点进行完整的状态交换。
+func (m *Members) PushPullNode(a Address, join bool) error {
 
 	remote, userState, err := m.sendAndReceiveState(a, join)
 	if err != nil {
@@ -634,9 +634,9 @@ func (m *Members) pushPullNode(a Address, join bool) error {
 }
 
 // 验证远端传来的NodeState 的协议版本与委托版本
-func (m *Members) verifyProtocol(remote []pushNodeState) error {
-	m.nodeLock.RLock()
-	defer m.nodeLock.RUnlock()
+func (m *Members) VerifyProtocol(remote []PushNodeState) error {
+	m.NodeLock.RLock()
+	defer m.NodeLock.RUnlock()
 
 	var maxpmin, minpmax uint8
 	var maxdmin, mindmax uint8
@@ -669,7 +669,7 @@ func (m *Members) verifyProtocol(remote []pushNodeState) error {
 		}
 	}
 
-	for _, n := range m.nodes {
+	for _, n := range m.Nodes {
 		if n.State != StateAlive {
 			continue
 		}
@@ -707,7 +707,7 @@ func (m *Members) verifyProtocol(remote []pushNodeState) error {
 		}
 	}
 
-	for _, n := range m.nodes {
+	for _, n := range m.Nodes {
 		nPCur := n.PCur
 		nDCur := n.DCur
 
@@ -725,9 +725,9 @@ func (m *Members) verifyProtocol(remote []pushNodeState) error {
 	return nil
 }
 
-// nextSeqNo 以线程安全的方式返回一个可用的序列号
-func (m *Members) nextSeqNo() uint32 {
-	return atomic.AddUint32(&m.sequenceNum, 1)
+// NextSeqNo 以线程安全的方式返回一个可用的序列号
+func (m *Members) NextSeqNo() uint32 {
+	return atomic.AddUint32(&m.SequenceNum, 1)
 }
 
 // nextIncarnation 以线程安全的方式返回下一个incarnation的编号。
@@ -740,26 +740,26 @@ func (m *Members) skipIncarnation(offset uint32) uint32 {
 	return atomic.AddUint32(&m.incarnation, offset)
 }
 
-// estNumNodes 用于获得当前估计的节点数
-func (m *Members) estNumNodes() int {
+// EstNumNodes 用于获得当前估计的节点数
+func (m *Members) EstNumNodes() int {
 	return int(atomic.LoadUint32(&m.numNodes))
 }
 
-type ackMessage struct {
+type AckMessage struct {
 	Complete  bool
 	Payload   []byte
 	Timestamp time.Time
 }
 
-// setProbeChannels is used to attach the ackCh to receive a message when an ack
+// SetProbeChannels is used to attach the ackCh to receive a message when an ack
 // with a given sequence number is received. The `complete` field of the message
 // will be false on timeout. Any nack messages will cause an empty struct to be
 // passed to the nackCh, which can be nil if not needed.
-func (m *Members) setProbeChannels(seqNo uint32, ackCh chan ackMessage, nackCh chan struct{}, timeout time.Duration) {
+func (m *Members) SetProbeChannels(seqNo uint32, ackCh chan AckMessage, nackCh chan struct{}, timeout time.Duration) {
 	// Create handler functions for acks and nacks
 	ackFn := func(payload []byte, timestamp time.Time) {
 		select {
-		case ackCh <- ackMessage{true, payload, timestamp}:
+		case ackCh <- AckMessage{true, payload, timestamp}:
 		default:
 		}
 	}
@@ -771,48 +771,48 @@ func (m *Members) setProbeChannels(seqNo uint32, ackCh chan ackMessage, nackCh c
 	}
 
 	// Add the handlers
-	ah := &ackHandler{ackFn, nackFn, nil}
-	m.ackLock.Lock()
-	m.ackHandlers[seqNo] = ah
-	m.ackLock.Unlock()
+	ah := &AckHandler{ackFn, nackFn, nil}
+	m.AckLock.Lock()
+	m.AckHandlers[seqNo] = ah
+	m.AckLock.Unlock()
 
 	// Setup a reaping routing
 	ah.timer = time.AfterFunc(timeout, func() {
-		m.ackLock.Lock()
-		delete(m.ackHandlers, seqNo)
-		m.ackLock.Unlock()
+		m.AckLock.Lock()
+		delete(m.AckHandlers, seqNo)
+		m.AckLock.Unlock()
 		select {
-		case ackCh <- ackMessage{false, nil, time.Now()}:
+		case ackCh <- AckMessage{false, nil, time.Now()}:
 		default:
 		}
 	})
 }
 
-// setAckHandler is used to attach a handler to be invoked when an ack with a
+// SetAckHandler is used to attach a handler to be invoked when an ack with a
 // given sequence number is received. If a timeout is reached, the handler is
 // deleted. This is used for indirect pings so does not configure a function
 // for nacks.
-func (m *Members) setAckHandler(seqNo uint32, ackFn func([]byte, time.Time), timeout time.Duration) {
+func (m *Members) SetAckHandler(seqNo uint32, ackFn func([]byte, time.Time), timeout time.Duration) {
 	// Add the handler
-	ah := &ackHandler{ackFn, nil, nil}
-	m.ackLock.Lock()
-	m.ackHandlers[seqNo] = ah
-	m.ackLock.Unlock()
+	ah := &AckHandler{ackFn, nil, nil}
+	m.AckLock.Lock()
+	m.AckHandlers[seqNo] = ah
+	m.AckLock.Unlock()
 
 	// Setup a reaping routing
 	ah.timer = time.AfterFunc(timeout, func() {
-		m.ackLock.Lock()
-		delete(m.ackHandlers, seqNo)
-		m.ackLock.Unlock()
+		m.AckLock.Lock()
+		delete(m.AckHandlers, seqNo)
+		m.AckLock.Unlock()
 	})
 }
 
 // Invokes an ack handler if any is associated, and reaps the handler immediately
-func (m *Members) invokeAckHandler(ack ackResp, timestamp time.Time) {
-	m.ackLock.Lock()
-	ah, ok := m.ackHandlers[ack.SeqNo]
-	delete(m.ackHandlers, ack.SeqNo)
-	m.ackLock.Unlock()
+func (m *Members) InvokeAckHandler(ack AckResp, timestamp time.Time) {
+	m.AckLock.Lock()
+	ah, ok := m.AckHandlers[ack.SeqNo]
+	delete(m.AckHandlers, ack.SeqNo)
+	m.AckLock.Unlock()
 	if !ok {
 		return
 	}
@@ -821,20 +821,20 @@ func (m *Members) invokeAckHandler(ack ackResp, timestamp time.Time) {
 }
 
 // Invokes nack handler if any is associated.
-func (m *Members) invokeNackHandler(nack nackResp) {
-	m.ackLock.Lock()
-	ah, ok := m.ackHandlers[nack.SeqNo]
-	m.ackLock.Unlock()
+func (m *Members) InvokeNAckHandler(nack NAckResp) {
+	m.AckLock.Lock()
+	ah, ok := m.AckHandlers[nack.SeqNo]
+	m.AckLock.Unlock()
 	if !ok || ah.nackFn == nil {
 		return
 	}
 	ah.nackFn()
 }
 
-// 当收到传来的关于本节点被怀疑或死亡的信息时，会发送一个alive gossip message。
+// 当收到传来的关于本节点被怀疑或死亡的信息时，会发送一个Alive gossip message。
 // 它将确保incarnation超过给定的 accusedInc 值，或者你可以提供 0 来获取下一个incarnation。
-// 这将改变传入的节点状态，所以必须在持有nodeLock情况下调用这个。
-func (m *Members) refute(me *nodeState, accusedInc uint32) {
+// 这将改变传入的节点状态，所以必须在持有NodeLock情况下调用这个。
+func (m *Members) refute(me *NodeState, accusedInc uint32) {
 	inc := m.nextIncarnation()
 	if accusedInc >= inc {
 		inc = m.skipIncarnation(accusedInc - inc + 1)
@@ -844,7 +844,7 @@ func (m *Members) refute(me *nodeState, accusedInc uint32) {
 	// 减少health，因为我们被要求反驳一个问题。
 	m.Awareness.ApplyDelta(1)
 
-	a := alive{
+	a := Alive{
 		Incarnation: inc,
 		Node:        me.Name,
 		Addr:        me.Addr,
@@ -855,5 +855,5 @@ func (m *Members) refute(me *nodeState, accusedInc uint32) {
 			me.DMin, me.DMax, me.DCur,
 		},
 	}
-	m.encodeBroadcast(me.Addr.String(), aliveMsg, a)
+	m.EncodeBroadcast(me.Addr.String(), AliveMsg, a)
 }

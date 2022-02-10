@@ -1,31 +1,32 @@
-package memberlist
+package test
 
 import (
 	"fmt"
+	"github.com/hashicorp/memberlist"
 	"net"
 	"testing"
 )
 
 func TestLogging_Address(t *testing.T) {
-	s := LogAddress(nil)
-	if s != "from=<unknown address>" {
+	s := memberlist.LogAddress(nil)
+	if s != "from=<unknown Address>" {
 		t.Fatalf("bad: %s", s)
 	}
 
-	addr, err := net.ResolveIPAddr("ip4", "127.0.0.1")
+	Addr, err := net.ResolveIPAddr("ip4", "127.0.0.1")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
 
-	s = LogAddress(addr)
+	s = memberlist.LogAddress(Addr)
 	if s != "from=127.0.0.1" {
 		t.Fatalf("bad: %s", s)
 	}
 }
 
 func TestLogging_Conn(t *testing.T) {
-	s := LogConn(nil)
-	if s != "from=<unknown address>" {
+	s := memberlist.LogConn(nil)
+	if s != "from=<unknown Address>" {
 		t.Fatalf("bad: %s", s)
 	}
 
@@ -40,7 +41,7 @@ func TestLogging_Conn(t *testing.T) {
 	}
 	defer conn.Close()
 
-	s = LogConn(conn)
+	s = memberlist.LogConn(conn)
 	if s != fmt.Sprintf("from=%s", conn.RemoteAddr().String()) {
 		t.Fatalf("bad: %s", s)
 	}

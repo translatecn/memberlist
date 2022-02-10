@@ -71,7 +71,7 @@ func newSuspicion(from string, k int, min time.Duration, max time.Duration, fn f
 }
 
 // remainingSuspicionTime takes the state variables of the suspicion timer and
-// calculates the remaining time to wait before considering a node dead. The
+// calculates the remaining time to wait before considering a node Dead. The
 // return value can be negative, so be prepared to fire the timer immediately in
 // that case.
 func remainingSuspicionTime(n, k int32, elapsed time.Duration, min, max time.Duration) time.Duration {

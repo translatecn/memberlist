@@ -24,7 +24,7 @@ func JoinHostPort(host string, port uint16) string {
 	return net.JoinHostPort(host, strconv.Itoa(int(port)))
 }
 
-// HasPort "host", "host:port", "ipv6::address",or "[ipv6::address]:port"
+// HasPort "host", "host:port", "ipv6::Address",or "[ipv6::Address]:port"
 // 是否包含端口
 func HasPort(s string) bool {
 	// IPv6 地址

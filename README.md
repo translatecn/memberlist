@@ -48,19 +48,19 @@ refute gossip
 ```
 
 StateAlive 
-    m.aliveNode         某节点存活
+    m.AliveNode         某节点存活
 StateLeft
-    m.deadNode          节点死亡
+    m.DeadNode          节点死亡
 StateDead
-    m.suspectNode       质疑节点是否真的dead
+    m.SuspectNode       质疑节点是否真的Dead
 StateSuspect
-    m.suspectNode
+    m.SuspectNode
 
 ```
 
 ```
 m.gossip
-m.pushPull
+m.PushPull
 m.probeNode
 ```
 
@@ -69,32 +69,32 @@ m.probeNode
 ```
 sendAndReceiveState()
 ---> 
-    buf = pushPullMsg (1 byte) + pushPullHeader + localNodes + userData
+    buf = PushPullMsg (1 byte) + PushPullHeader + localNodes + userData
     
-    sendBuf = compressMsg (1 byte) + buf
+    sendBuf = CompressMsg (1 byte) + buf
     
-    sendBuf = encryptMsg (1 byte) + messageLength (4 byte) + sendBuf + stream_label (optional)
+    sendBuf = EncryptMsg (1 byte) + messageLength (4 byte) + sendBuf + stream_label (optional)
     
     
     
     
 另外:如果有label
-    hasLabelMsg (1 byte) + LabelSize (1 byte) +  LabelData (LabelSize byte) + sendBuf
+    HasLabelMsg (1 byte) + LabelSize (1 byte) +  LabelData (LabelSize byte) + sendBuf
     
     
 ```
 
 ```
-streamLabel 只有在 hasLabelMsg 类型下有
+streamLabel 只有在 HasLabelMsg 类型下有
 
 
 
 
 
-pingMsg
-pushPullMsg
+PingMsg
+PushPullMsg
     -   join 时触发
-userMsg
+UserMsg
 ```
 
 ### issue
