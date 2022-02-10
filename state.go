@@ -109,7 +109,7 @@ func (m *Members) Schedule() {
 	// 开始定时探活
 	if m.Config.ProbeInterval > 0 {
 		t := time.NewTicker(m.Config.ProbeInterval) // Config.go:190 1s
-		go m.triggerFunc(m.Config.ProbeInterval, t.C, stopCh, m.probe)
+		go m.triggerFunc(m.Config.ProbeInterval, t.C, stopCh, m.Probe)
 		//m.Probe()
 		m.tickers = append(m.tickers, t)
 	}
@@ -122,7 +122,7 @@ func (m *Members) Schedule() {
 	// gossip 定时器
 	if m.Config.GossipInterval > 0 && m.Config.GossipNodes > 0 { // 每隔100ms,将消息随机发送到3个节点
 		t := time.NewTicker(m.Config.GossipInterval)
-		go m.triggerFunc(m.Config.GossipInterval, t.C, stopCh, m.gossip)
+		go m.triggerFunc(m.Config.GossipInterval, t.C, stopCh, m.Gossip)
 		m.tickers = append(m.tickers, t)
 	}
 	if len(m.tickers) > 0 {

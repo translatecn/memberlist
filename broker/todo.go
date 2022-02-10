@@ -22,10 +22,10 @@ func ma2in() {
 	fmt.Println(tcpLn.Addr().(*net.TCPAddr).Port)
 	fmt.Println(tcpLn.Addr().(*net.TCPAddr).Port)
 	fmt.Println(tcpLn.Addr().(*net.TCPAddr).Port)
-	fmt.Println(sockAddr.GetPrivateIP())
-	fmt.Println(sockAddr.GetPrivateIP())
-	fmt.Println(sockAddr.GetPrivateIP())
-	fmt.Println(sockAddr.GetPrivateIP())
+	fmt.Println(sockaddr.GetPrivateIP())
+	fmt.Println(sockaddr.GetPrivateIP())
+	fmt.Println(sockaddr.GetPrivateIP())
+	fmt.Println(sockaddr.GetPrivateIP())
 }
 
 func main() {
