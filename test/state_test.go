@@ -292,11 +292,11 @@ func TestMemberList_ProbeNode_FallbackTCP(t *testing.T) {
 	// Isolate m4 from UDP traffic by re-opening its listener on the wrong
 	// Port. This should force the TCP fallback path to be used.
 	var err error
-	if err = m4.udpListener.Close(); err != nil {
+	if err = m4.UdpListener.Close(); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 	udpAddr := &net.UDPAddr{IP: ip4, Port: 9999}
-	if m4.udpListener, err = net.ListenUDP("udp", udpAddr); err != nil {
+	if m4.UdpListener, err = net.ListenUDP("udp", udpAddr); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 
@@ -418,11 +418,11 @@ func TestMemberList_ProbeNode_FallbackTCP_Disabled(t *testing.T) {
 	// Isolate m4 from UDP traffic by re-opening its listener on the wrong
 	// Port. This should force the TCP fallback path to be used.
 	var err error
-	if err = m4.udpListener.Close(); err != nil {
+	if err = m4.UdpListener.Close(); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 	udpAddr := &net.UDPAddr{IP: ip4, Port: 9999}
-	if m4.udpListener, err = net.ListenUDP("udp", udpAddr); err != nil {
+	if m4.UdpListener, err = net.ListenUDP("udp", udpAddr); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 
@@ -516,11 +516,11 @@ func TestMemberList_ProbeNode_FallbackTCP_OldProtocol(t *testing.T) {
 	// Isolate m4 from UDP traffic by re-opening its listener on the wrong
 	// Port. This should force the TCP fallback path to be used.
 	var err error
-	if err = m4.udpListener.Close(); err != nil {
+	if err = m4.UdpListener.Close(); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 	udpAddr := &net.UDPAddr{IP: ip4, Port: 9999}
-	if m4.udpListener, err = net.ListenUDP("udp", udpAddr); err != nil {
+	if m4.UdpListener, err = net.ListenUDP("udp", udpAddr); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 

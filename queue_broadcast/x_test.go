@@ -7,6 +7,7 @@ import (
 	"testing"
 )
 
+// OK
 func TestLimitedBroadcastLess(t *testing.T) {
 	cases := []struct {
 		Name string
@@ -15,7 +16,7 @@ func TestLimitedBroadcastLess(t *testing.T) {
 	}{
 		{
 			"diff-transmits",
-			&limitedBroadcast{transmits: 0, msgLen: 10, id: 100},
+			&limitedBroadcast{transmits: 0, msgLen: 10, id: 100}, // transmits  尝试传输的次数
 			&limitedBroadcast{transmits: 1, msgLen: 10, id: 100},
 		},
 		{
@@ -54,16 +55,18 @@ func TestLimitedBroadcastLess(t *testing.T) {
 	}
 }
 
+// OK
 func TestTransmitLimited_Queue(t *testing.T) {
 	q := &TransmitLimitedQueue{RetransmitMult: 1, NumNodes: func() int { return 1 }}
-	q.QueueBroadcast(&MemberlistBroadcast{"test", nil, nil})
-	q.QueueBroadcast(&MemberlistBroadcast{"foo", nil, nil})
-	q.QueueBroadcast(&MemberlistBroadcast{"bar", nil, nil})
+	// 向三个节点发送广播消息
+	q.QueueBroadcast(&MemberlistBroadcast{"test", nil, nil}) // idGen =1
+	q.QueueBroadcast(&MemberlistBroadcast{"foo", nil, nil})  // idGen =2
+	q.QueueBroadcast(&MemberlistBroadcast{"bar", nil, nil})  // idGen =3
 
 	if q.NumQueued() != 3 {
 		t.Fatalf("bad len")
 	}
-	dump := q.OrderedView(true)
+	dump := q.OrderedView(true) // 生序
 	if dump[0].B.(*MemberlistBroadcast).Node != "test" {
 		t.Fatalf("missing test")
 	}
@@ -74,7 +77,7 @@ func TestTransmitLimited_Queue(t *testing.T) {
 		t.Fatalf("missing bar")
 	}
 
-	// Should invalidate previous message
+	// 应使以前的信息无效
 	q.QueueBroadcast(&MemberlistBroadcast{"test", nil, nil})
 
 	if q.NumQueued() != 3 {
@@ -92,20 +95,20 @@ func TestTransmitLimited_Queue(t *testing.T) {
 	}
 }
 
+// OK
 func TestTransmitLimited_GetBroadcasts(t *testing.T) {
 	q := &TransmitLimitedQueue{RetransmitMult: 3, NumNodes: func() int { return 10 }}
-
-	// 18 bytes per message
+	// 每条消息18byte
 	q.QueueBroadcast(&MemberlistBroadcast{"test", []byte("1. this is a test."), nil})
 	q.QueueBroadcast(&MemberlistBroadcast{"foo", []byte("2. this is a test."), nil})
 	q.QueueBroadcast(&MemberlistBroadcast{"bar", []byte("3. this is a test."), nil})
 	q.QueueBroadcast(&MemberlistBroadcast{"baz", []byte("4. this is a test."), nil})
 
-	// 2 byte overhead per message, should get all 4 messages
-	all := q.GetBroadcasts(2, 80)
+	// 每条消息2byte的开销，应该能获得4条消息
+	all := q.GetBroadcasts(2, 80) // 获取80长度以内的任意节点可以发送的消息
 	require.Equal(t, 4, len(all), "missing messages: %v", prettyPrintMessages(all))
 
-	// 3 byte overhead, should only get 3 messages back
+	// 每条消息3byte的开销，应该能获得3条消息
 	partial := q.GetBroadcasts(3, 80)
 	require.Equal(t, 3, len(partial), "missing messages: %v", prettyPrintMessages(partial))
 }

@@ -44,15 +44,12 @@ func (m *Members) queueBroadcast(node string, msg []byte, notify chan struct{}) 
 	m.Broadcasts.QueueBroadcast(b)
 }
 
-// getBroadcasts is used to return a slice of Broadcasts to send up to
-// a maximum byte size, while imposing a per-broadcast overhead. This is used
-// to fill a UDP packet with piggybacked data
+// getBroadcasts
 // 是用来返回一个广播片，以发送最大的字节大小，同时施加每个广播的开销。这被用来在UDP数据包中填充捎带的数据
 func (m *Members) getBroadcasts(overhead, limit int) [][]byte {
-	// Get memberlist messages first
 	toSend := m.Broadcasts.GetBroadcasts(overhead, limit)
 
-	// Check if the user has anything to broadcast
+	// 检查用户是否有东西要广播
 	d := m.Config.Delegate
 	if d != nil {
 		// Determine the bytes used already

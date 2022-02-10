@@ -31,7 +31,7 @@ func (m *Members) UpdateNode(timeout time.Duration) error {
 	m.NodeLock.RUnlock()
 
 	a := Alive{
-		Incarnation: m.nextIncarnation(),
+		Incarnation: m.NextIncarnation(),
 		Node:        m.Config.Name,
 		Addr:        state.Addr,
 		Port:        state.Port,
@@ -71,7 +71,7 @@ func (m *Members) Members() []*Node {
 	return nodes
 }
 
-// OK
+// GetNodeState OK
 func (m *Members) GetNodeState(Addr string) NodeStateType {
 	//Addr
 	m.NodeLock.RLock()
@@ -81,7 +81,7 @@ func (m *Members) GetNodeState(Addr string) NodeStateType {
 	return n.State
 }
 
-// 获取节点上一次状态改变的时间
+// GetNodeStateChange 获取节点上一次状态改变的时间
 func (m *Members) GetNodeStateChange(Addr string) time.Time {
 	m.NodeLock.RLock()
 	defer m.NodeLock.RUnlock()
@@ -90,7 +90,7 @@ func (m *Members) GetNodeStateChange(Addr string) time.Time {
 	return n.StateChange
 }
 
-// OK
+// ChangeNode OK
 func (m *Members) ChangeNode(Addr string, f func(*NodeState)) {
 	m.NodeLock.Lock()
 	defer m.NodeLock.Unlock()
@@ -264,7 +264,7 @@ func (m *Members) AliveNode(a *Alive, notify chan struct{}, bootstrap bool) {
 	}
 
 	// 清理可能生效的计时器。
-	delete(m.nodeTimers, a.Node)
+	delete(m.NodeTimers, a.Node)
 
 	oldState := state.State
 	oldMeta := state.Meta
@@ -321,7 +321,7 @@ func (m *Members) AliveNode(a *Alive, notify chan struct{}, bootstrap bool) {
 	}
 }
 
-// TODO
+// SuspectNode TODO
 func (m *Members) SuspectNode(s *Suspect) {
 	m.NodeLock.Lock()
 	defer m.NodeLock.Unlock()
@@ -335,11 +335,11 @@ func (m *Members) SuspectNode(s *Suspect) {
 		return
 	}
 
-	// See if there's a suspicion timer we can confirm. If the info is new
+	// See if there's a Suspicion timer we can confirm. If the info is new
 	// to us we will go ahead and re-gossip it. This allows for multiple
 	// independent confirmations to flow even when a node probes a node
 	// that's already Suspect.
-	if timer, ok := m.nodeTimers[s.Node]; ok {
+	if timer, ok := m.NodeTimers[s.Node]; ok {
 		if timer.Confirm(s.From) {
 			m.EncodeBroadcast(s.Node, SuspectMsg, s)
 		}
@@ -364,9 +364,9 @@ func (m *Members) SuspectNode(s *Suspect) {
 	changeTime := time.Now()
 	state.StateChange = changeTime
 
-	// Setup a suspicion timer. Given that we don't have any known phase
+	// Setup a Suspicion timer. Given that we don't have any known phase
 	// relationship with our peers, we set up k such that we hit the nominal
-	// timeout two probe intervals short of what we expect given the suspicion
+	// timeout two probe intervals short of what we expect given the Suspicion
 	// multiplier.
 	k := m.Config.SuspicionMult - 2
 
@@ -399,10 +399,10 @@ func (m *Members) SuspectNode(s *Suspect) {
 			m.DeadNode(d)
 		}
 	}
-	m.nodeTimers[s.Node] = newSuspicion(s.From, k, min, max, fn)
+	m.NodeTimers[s.Node] = newSuspicion(s.From, k, min, max, fn)
 }
 
-// OK
+// DeadNode OK
 func (m *Members) DeadNode(d *Dead) {
 	m.NodeLock.Lock()
 	defer m.NodeLock.Unlock()
@@ -417,7 +417,7 @@ func (m *Members) DeadNode(d *Dead) {
 		return
 	}
 
-	delete(m.nodeTimers, d.Node)
+	delete(m.NodeTimers, d.Node)
 
 	if state.DeadOrLeft() {
 		return
@@ -431,7 +431,7 @@ func (m *Members) DeadNode(d *Dead) {
 			return
 		}
 		// 如果我们要离开，我们就广播并等待
-		m.EncodeBroadcastNotify(d.Node, DeadMsg, d, m.leaveBroadcast)
+		m.EncodeBroadcastNotify(d.Node, DeadMsg, d, m.LeaveBroadcast)
 	} else {
 		m.EncodeBroadcast(d.Node, DeadMsg, d)
 	}

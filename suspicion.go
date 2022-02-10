@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// suspicion 管理节点的可疑计时器，并提供一个接口，当我们获得更多关于节点可疑的独立确认时，可以加速超时。
-type suspicion struct {
+// Suspicion 管理节点的可疑计时器，并提供一个接口，当我们获得更多关于节点可疑的独立确认时，可以加速超时。
+type Suspicion struct {
 	// N是我们看到的独立确认的数量。这必须使用原子指令更新，以防止与定时器回调争用。
 	n int32
 
@@ -35,11 +35,11 @@ type suspicion struct {
 
 // newSuspicion returns a timer started with the max time, and that will drive
 // to the min time after seeing k or more confirmations. The from node will be
-// excluded from confirmations since we might get our own suspicion message
+// excluded from confirmations since we might get our own Suspicion message
 // gossiped back to us. The minimum time will be used if no confirmations are
 // called for (k <= 0).
-func newSuspicion(from string, k int, min time.Duration, max time.Duration, fn func(int)) *suspicion {
-	s := &suspicion{
+func newSuspicion(from string, k int, min time.Duration, max time.Duration, fn func(int)) *Suspicion {
+	s := &Suspicion{
 		k:             int32(k),
 		min:           min,
 		max:           max,
@@ -70,7 +70,7 @@ func newSuspicion(from string, k int, min time.Duration, max time.Duration, fn f
 	return s
 }
 
-// remainingSuspicionTime takes the state variables of the suspicion timer and
+// remainingSuspicionTime takes the state variables of the Suspicion timer and
 // calculates the remaining time to wait before considering a node Dead. The
 // return value can be negative, so be prepared to fire the timer immediately in
 // that case.
@@ -89,7 +89,7 @@ func remainingSuspicionTime(n, k int32, elapsed time.Duration, min, max time.Dur
 
 // Confirm 注册一个可能的新同行也确定给定节点是可疑的。
 // 如果这是新的信息，则返回true；如果是重复的确认，则返回false；如果我们已经有足够的确认来达到最低限度。
-func (s *suspicion) Confirm(from string) bool {
+func (s *Suspicion) Confirm(from string) bool {
 	// If we've got enough confirmations then stop accepting them.
 	if atomic.LoadInt32(&s.n) >= s.k {
 		return false

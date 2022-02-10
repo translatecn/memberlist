@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/hashicorp/memberlist/pkg"
 	"github.com/hashicorp/memberlist/queue_broadcast"
-	"github.com/hashicorp/memberlist/test"
 	"io"
 	"log"
 	"net"
@@ -318,18 +317,18 @@ func NewMembers(conf *Config) (*Members, error) {
 	// 如果配置中没有给出自定义的网络传输，则默认设置网络传输。
 	Transport := conf.Transport // 默认为nil
 	if Transport == nil {
-		nc := &test.NetTransportConfig{
+		nc := &NetTransportConfig{
 			BindAddrs: []string{conf.BindAddr}, // 0.0.0.0
 			BindPort:  conf.BindPort,
 			Logger:    logger,
 		}
 
 		// 关于重试的详细信息，请参阅下面的注释。
-		makeNetRetry := func(limit int) (*test.NetTransport, error) {
+		makeNetRetry := func(limit int) (*NetTransport, error) {
 			var err error
 			for try := 0; try < limit; try++ {
-				var nt *test.NetTransport
-				if nt, err = test.NewNetTransport(nc); err == nil {
+				var nt *NetTransport
+				if nt, err = NewNetTransport(nc); err == nil {
 					return nt, nil
 				}
 				if strings.Contains(err.Error(), "已使用地址") {
@@ -365,7 +364,7 @@ func NewMembers(conf *Config) (*Members, error) {
 	nodeAwareTransport, ok := Transport.(NodeAwareTransport)
 	if !ok {
 		logger.Printf("[DEBUG] memberlist: 配置的Transport不是一个NodeAwareTransport，一些功能可能无法正常工作。")
-		nodeAwareTransport = &shimNodeAwareTransport{Transport}
+		nodeAwareTransport = &ShimNodeAwareTransport{Transport: Transport}
 	}
 
 	if len(conf.Label) > LabelMaxSize {
@@ -373,22 +372,22 @@ func NewMembers(conf *Config) (*Members, error) {
 	}
 
 	if conf.Label != "" {
-		nodeAwareTransport = &labelWrappedTransport{
-			label:              conf.Label,
+		nodeAwareTransport = &LabelWrappedTransport{
+			Label:              conf.Label,
 			NodeAwareTransport: nodeAwareTransport,
 		}
 	}
 
 	m := &Members{
 		Config:               conf,
-		shutdownCh:           make(chan struct{}),
-		leaveBroadcast:       make(chan struct{}, 1), //
+		ShutdownCh:           make(chan struct{}),
+		LeaveBroadcast:       make(chan struct{}, 1), //
 		Transport:            nodeAwareTransport,
-		handoffCh:            make(chan struct{}, 1),
-		highPriorityMsgQueue: list.New(), // 高优先级消息队列
-		lowPriorityMsgQueue:  list.New(), // 低优先级消息队列
+		HandoffCh:            make(chan struct{}, 1),
+		HighPriorityMsgQueue: list.New(), // 高优先级消息队列
+		LowPriorityMsgQueue:  list.New(), // 低优先级消息队列
 		NodeMap:              make(map[string]*NodeState),
-		nodeTimers:           make(map[string]*suspicion),
+		NodeTimers:           make(map[string]*Suspicion),
 		Awareness:            pkg.NewAwareness(conf.AwarenessMaxMultiplier), // 感知对象
 		AckHandlers:          make(map[uint32]*AckHandler),
 		Broadcasts:           &queue_broadcast.TransmitLimitedQueue{RetransmitMult: conf.RetransmitMult},
@@ -399,13 +398,15 @@ func NewMembers(conf *Config) (*Members, error) {
 	}
 
 	// 设置广播地址
-	if _, _, err := m.refreshAdvertise(); err != nil {
+	if _, _, err := m.RefreshAdvertise(); err != nil {
 		return nil, err
 	}
 
-	go m.streamListen()  // pull 模式
-	go m.packetListen()  // 直接消息传递
-	go m.packetHandler() //TODO 用于处理消息
+	go m.StreamListen() // push\pull模式,处理每一个tcp链接
+	go m.PacketListen() // 直接消息传递
+
+	go m.PacketHandler() //TODO 用于处理消息
+
 	return m, nil
 }
 

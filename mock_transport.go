@@ -3,6 +3,7 @@ package memberlist
 import (
 	"bytes"
 	"fmt"
+	"github.com/hashicorp/memberlist/pkg"
 	"io"
 	"net"
 	"strconv"
@@ -117,7 +118,7 @@ func (t *MockTransport) PacketCh() <-chan *Packet {
 }
 
 // See NodeAwareTransport.
-func (t *MockTransport) IngestPacket(conn net.Conn, Addr net.Addr, now time.Time, shouldClose bool) error {
+func (t *MockTransport) RecIngestPacket(conn net.Conn, Addr net.Addr, now time.Time, shouldClose bool) error {
 	if shouldClose {
 		defer conn.Close()
 	}
@@ -132,7 +133,7 @@ func (t *MockTransport) IngestPacket(conn net.Conn, Addr net.Addr, now time.Time
 	// message. This is checked elsewhere for writes coming in directly from
 	// the UDP socket.
 	if n := buf.Len(); n < 1 {
-		return fmt.Errorf("packet too short (%d bytes) %s", n, LogAddress(Addr))
+		return fmt.Errorf("packet too short (%d bytes) %s", n, pkg.LogAddress(Addr))
 	}
 
 	// Inject the packet.

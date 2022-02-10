@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strconv"
 	"sync/atomic"
+	"time"
 )
 
 func ma2in() {
@@ -50,6 +51,10 @@ func main() {
 	atomic.AddUint32(&a, ^uint32(0))
 	fmt.Println(a)
 
+	time.AfterFunc(time.Second, func() {
+		fmt.Println("====")
+	})
+	time.Sleep(time.Second * 3)
 }
 
 //package dev

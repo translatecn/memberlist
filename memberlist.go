@@ -46,26 +46,26 @@ type Members struct {
 	advertiseAddr net.IP
 	advertisePort uint16
 
-	Config   *Config
-	shutdown int32 // 停止标志
-	shutdownCh     chan struct{}
+	Config         *Config
+	shutdown       int32 // 停止标志
+	ShutdownCh     chan struct{}
 	leave          int32
-	leaveBroadcast chan struct{} // 离开广播
+	LeaveBroadcast chan struct{} // 离开广播
 
 	shutdownLock sync.Mutex
 	leaveLock    sync.Mutex
 
 	Transport            NodeAwareTransport
-	handoffCh            chan struct{} //TODO 消息队列
-	highPriorityMsgQueue *list.List
-	lowPriorityMsgQueue  *list.List
+	HandoffCh            chan struct{} //TODO 消息队列
+	HighPriorityMsgQueue *list.List
+	LowPriorityMsgQueue  *list.List
 	msgQueueLock         sync.Mutex
 
 	NodeLock   sync.RWMutex
 	probeIndex int                   // 节点探活索引  与nodes对应
 	Nodes      []*NodeState          // Known Nodes
 	NodeMap    map[string]*NodeState // ls-2018.local -> NodeState
-	nodeTimers map[string]*suspicion // ls-2018.local -> suspicion timer
+	NodeTimers map[string]*Suspicion // ls-2018.local -> Suspicion timer
 	Awareness  *pkg.Awareness
 
 	tickerLock sync.Mutex
@@ -105,7 +105,6 @@ func (m *Members) Join(existing []string) (int, error) {
 		}
 
 		for _, Addr := range Addrs {
-			var _ = IpPort{}
 			hp := pkg.JoinHostPort(Addr.IP.String(), Addr.Port)
 			a := Address{Addr: hp, Name: Addr.NodeName}
 			if err := m.PushPullNode(a, true); err != nil {
@@ -244,7 +243,7 @@ func (m *Members) ResolveAddr(hostStr string) ([]IpPort, error) {
 // SetAlive 用于将此节点标记为活动节点。这就像我们自己的network channel收到一个Alive通知一样。
 func (m *Members) SetAlive() error {
 	//TODO 获取广播地址？会一直变么
-	Addr, port, err := m.refreshAdvertise()
+	Addr, port, err := m.RefreshAdvertise()
 	if err != nil {
 		return err
 	}
@@ -275,7 +274,7 @@ func (m *Members) SetAlive() error {
 	}
 
 	a := Alive{
-		Incarnation: m.nextIncarnation(), // 1 周期性的full state sync，使用incarnation number去调协
+		Incarnation: m.NextIncarnation(), // 1 周期性的full state sync，使用incarnation number去调协
 		Node:        m.Config.Name,       // 节点名字、唯一
 		Addr:        Addr,
 		Port:        uint16(port),
@@ -302,10 +301,10 @@ func (m *Members) setAdvertise(Addr net.IP, port int) {
 	m.advertisePort = uint16(port)
 }
 
-// 刷新广播地址
-func (m *Members) refreshAdvertise() (net.IP, int, error) {
+// RefreshAdvertise 刷新广播地址
+func (m *Members) RefreshAdvertise() (net.IP, int, error) {
 	Addr, port, err := m.Transport.FinalAdvertiseAddr(m.Config.AdvertiseAddr, m.Config.AdvertisePort) // "" 8000
-	fmt.Println("refreshAdvertise [sockAddr.GetPrivateIP] ---->", Addr, port)
+	fmt.Println("RefreshAdvertise [sockAddr.GetPrivateIP] ---->", Addr, port)
 	if err != nil {
 		return nil, 0, fmt.Errorf("获取地址失败: %v", err)
 	}
@@ -424,7 +423,7 @@ func (m *Members) Leave(timeout time.Duration) error {
 				timeoutCh = time.After(timeout)
 			}
 			select {
-			case <-m.leaveBroadcast:
+			case <-m.LeaveBroadcast:
 			case <-timeoutCh:
 				return fmt.Errorf("timeout waiting for leave broadcast")
 			}
@@ -453,7 +452,7 @@ func (m *Members) GetHealthScore() int {
 
 // ProtocolVersion 返回当前的协议版本
 func (m *Members) ProtocolVersion() uint8 {
-	return m.Config.ProtocolVersion
+	return m.Config.ProtocolVersion // 2
 }
 
 // Shutdown 优雅的退出集群、发送Leave消息【幂等】
@@ -470,7 +469,7 @@ func (m *Members) Shutdown() error {
 	}
 
 	atomic.StoreInt32(&m.shutdown, 1) // 设置为1 ;执行了两次
-	close(m.shutdownCh)
+	close(m.ShutdownCh)
 	m.deschedule() // 停止定时器
 	return nil
 }

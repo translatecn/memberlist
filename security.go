@@ -55,8 +55,8 @@ func Pkcs7decode(buf []byte, blockSize int) []byte {
 	return buf[:n]
 }
 
-// encryptOverhead returns the maximum possible overhead of encryption by version
-func encryptOverhead(vsn EncryptionVersion) int {
+// encryptOverhead 返回按版本加密的最大可能开销。
+func encryptOverhead(vsn EncryptionVersion) int { // 1
 	switch vsn {
 	case 0:
 		return 45 // Version: 1, IV: 12, Padding: 16, Tag: 16

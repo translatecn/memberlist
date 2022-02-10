@@ -2,13 +2,13 @@ package test
 
 import (
 	"fmt"
-	"github.com/hashicorp/memberlist"
+	"github.com/hashicorp/memberlist/pkg"
 	"net"
 	"testing"
 )
 
 func TestLogging_Address(t *testing.T) {
-	s := memberlist.LogAddress(nil)
+	s := pkg.LogAddress(nil)
 	if s != "from=<unknown Address>" {
 		t.Fatalf("bad: %s", s)
 	}
@@ -18,14 +18,14 @@ func TestLogging_Address(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	s = memberlist.LogAddress(Addr)
+	s = pkg.LogAddress(Addr)
 	if s != "from=127.0.0.1" {
 		t.Fatalf("bad: %s", s)
 	}
 }
 
 func TestLogging_Conn(t *testing.T) {
-	s := memberlist.LogConn(nil)
+	s := pkg.LogConn(nil)
 	if s != "from=<unknown Address>" {
 		t.Fatalf("bad: %s", s)
 	}
@@ -41,7 +41,7 @@ func TestLogging_Conn(t *testing.T) {
 	}
 	defer conn.Close()
 
-	s = memberlist.LogConn(conn)
+	s = pkg.LogConn(conn)
 	if s != fmt.Sprintf("from=%s", conn.RemoteAddr().String()) {
 		t.Fatalf("bad: %s", s)
 	}

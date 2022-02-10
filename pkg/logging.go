@@ -1,4 +1,4 @@
-package memberlist
+package pkg
 
 import (
 	"fmt"
@@ -25,6 +25,5 @@ func LogConn(conn net.Conn) string {
 	if conn == nil {
 		return LogAddress(nil)
 	}
-
 	return LogAddress(conn.RemoteAddr())
 }

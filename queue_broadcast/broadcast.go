@@ -38,6 +38,8 @@ func (b *MemberlistBroadcast) Message() []byte {
 }
 
 func (b *MemberlistBroadcast) Finished() {
+	// case <-notifyCh:
+	// case <-m.LeaveBroadcast:
 	select {
 	case b.Notify <- struct{}{}:
 	default:

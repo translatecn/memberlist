@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/hashicorp/memberlist"
-
 	"io/ioutil"
 	"log"
 	"net"
@@ -677,7 +676,7 @@ func testMemberlist_Join_with_Labels(t *testing.T, secretKey []byte) {
 		assert.Equal(t, expected, m.EstNumNodes())
 	}
 
-	runStep(t, "same label can join", func(t *testing.T) {
+	runStep(t, "same Label can join", func(t *testing.T) {
 		num, err := m2.Join([]string{m1.Config.Name + "/" + m1.Config.BindAddr})
 		require.NoError(t, err)
 		require.Equal(t, 1, num)
@@ -687,7 +686,7 @@ func testMemberlist_Join_with_Labels(t *testing.T, secretKey []byte) {
 		checkHost(t, m1, 2)
 	})
 
-	// Create a third node that uses no label
+	// Create a third node that uses no Label
 	c3 := testConfig(t)
 	c3.Label = ""
 	c3.BindPort = bindPort
@@ -696,7 +695,7 @@ func testMemberlist_Join_with_Labels(t *testing.T, secretKey []byte) {
 	require.NoError(t, err)
 	defer m3.Shutdown()
 
-	runStep(t, "no label cannot join", func(t *testing.T) {
+	runStep(t, "no Label cannot join", func(t *testing.T) {
 		_, err := m3.Join([]string{m1.Config.Name + "/" + m1.Config.BindAddr})
 		require.Error(t, err)
 
@@ -707,7 +706,7 @@ func testMemberlist_Join_with_Labels(t *testing.T, secretKey []byte) {
 		checkHost(t, m1, 2)
 	})
 
-	// Create a fourth node that uses a mismatched label
+	// Create a fourth node that uses a mismatched Label
 	c4 := testConfig(t)
 	c4.Label = "not-blah"
 	c4.BindPort = bindPort
@@ -716,7 +715,7 @@ func testMemberlist_Join_with_Labels(t *testing.T, secretKey []byte) {
 	require.NoError(t, err)
 	defer m4.Shutdown()
 
-	runStep(t, "mismatched label cannot join", func(t *testing.T) {
+	runStep(t, "mismatched Label cannot join", func(t *testing.T) {
 		_, err := m4.Join([]string{m1.Config.Name + "/" + m1.Config.BindAddr})
 		require.Error(t, err)
 

@@ -149,7 +149,7 @@ func (m *Members) triggerFunc(stagger time.Duration, C <-chan time.Time, stop <-
 	}
 }
 
-// 周期性的push\pull 直到收到stop信号。不使用triggerFunc，因为触发时间不固定，基于集群大小避免网络堵塞
+// PushPullTrigger 周期性的push\pull 直到收到stop信号。不使用triggerFunc，因为触发时间不固定，基于集群大小避免网络堵塞
 func (m *Members) PushPullTrigger(stop <-chan struct{}) {
 	interval := m.Config.PushPullInterval
 	// 开始时 随机睡眠0~randStagger
@@ -191,7 +191,7 @@ func (m *Members) deschedule() {
 	m.tickers = nil
 }
 
-// 用于对所有节点的探活
+// Probe 用于对所有节点的探活
 func (m *Members) Probe() {
 	// 探测过的数量
 	numCheck := 0
@@ -232,7 +232,7 @@ START:
 	m.ProbeNode(&node)
 }
 
-// OK
+// ProbeNodeByAddr OK
 func (m *Members) ProbeNodeByAddr(Addr string) {
 	m.NodeLock.RLock()
 	n := m.NodeMap[Addr]
@@ -260,7 +260,7 @@ func FailedRemote(err error) bool {
 	return false
 }
 
-// probeNode 单个节点的故障检查。
+// ProbeNode 单个节点的故障检查。
 func (m *Members) ProbeNode(node *NodeState) {
 
 	// 我们使用我们的health awareness来扩展整个探测间隔，
@@ -476,10 +476,11 @@ HANDLE_REMOTE_FAILURE:
 	m.SuspectNode(&s)
 }
 
-// Ping initiates a Ping to the node with the specified name.
+// Ping 发送ping到指定节点
 func (m *Members) Ping(node string, Addr net.Addr) (time.Duration, error) {
-	// Prepare a Ping message and setup an ack handler.
-	selfAddr, selfPort := m.getAdvertise()
+	// ls-2018.local  ,直接测的本机          127.0.0.1:8000
+	// 准备一个Ping消息并设置一个ack处理程序。
+	selfAddr, selfPort := m.getAdvertise() // 10.10.16.207  8000
 	ping := Ping{
 		SeqNo:      m.NextSeqNo(),
 		Node:       node,
@@ -488,11 +489,9 @@ func (m *Members) Ping(node string, Addr net.Addr) (time.Duration, error) {
 		SourceNode: m.Config.Name,
 	}
 	ackCh := make(chan AckMessage, m.Config.IndirectChecks+1)
-	m.SetProbeChannels(ping.SeqNo, ackCh, nil, m.Config.ProbeInterval)
+	m.SetProbeChannels(ping.SeqNo, ackCh, nil, m.Config.ProbeInterval) // 设置ackFc NackFc 以及超时Fc
 
 	a := Address{Addr: Addr.String(), Name: node}
-
-	// Send a Ping to the node.
 	if err := m.encodeAndSendMsg(a, PingMsg, &ping); err != nil {
 		return 0, err
 	}
@@ -633,7 +632,7 @@ func (m *Members) PushPullNode(a Address, join bool) error {
 	return nil
 }
 
-// 验证远端传来的NodeState 的协议版本与委托版本
+// VerifyProtocol 验证远端传来的NodeState 的协议版本与委托版本
 func (m *Members) VerifyProtocol(remote []PushNodeState) error {
 	m.NodeLock.RLock()
 	defer m.NodeLock.RUnlock()
@@ -730,9 +729,12 @@ func (m *Members) NextSeqNo() uint32 {
 	return atomic.AddUint32(&m.SequenceNum, 1)
 }
 
-// nextIncarnation 以线程安全的方式返回下一个incarnation的编号。
-func (m *Members) nextIncarnation() uint32 {
+// NextIncarnation 以线程安全的方式返回下一个incarnation的编号。
+func (m *Members) NextIncarnation() uint32 {
 	return atomic.AddUint32(&m.incarnation, 1)
+}
+func (m *Members) CurIncarnation() uint32 {
+	return m.incarnation
 }
 
 // skipIncarnation incarnation number添加偏移量
@@ -751,12 +753,9 @@ type AckMessage struct {
 	Timestamp time.Time
 }
 
-// SetProbeChannels is used to attach the ackCh to receive a message when an ack
-// with a given sequence number is received. The `complete` field of the message
-// will be false on timeout. Any nack messages will cause an empty struct to be
-// passed to the nackCh, which can be nil if not needed.
+// SetProbeChannels 当消息确认时 发到ackCh。如果超时 complete字段会是false
+// 不需要确认，发送空struct或nil
 func (m *Members) SetProbeChannels(seqNo uint32, ackCh chan AckMessage, nackCh chan struct{}, timeout time.Duration) {
-	// Create handler functions for acks and nacks
 	ackFn := func(payload []byte, timestamp time.Time) {
 		select {
 		case ackCh <- AckMessage{true, payload, timestamp}:
@@ -770,13 +769,11 @@ func (m *Members) SetProbeChannels(seqNo uint32, ackCh chan AckMessage, nackCh c
 		}
 	}
 
-	// Add the handlers
 	ah := &AckHandler{ackFn, nackFn, nil}
 	m.AckLock.Lock()
 	m.AckHandlers[seqNo] = ah
 	m.AckLock.Unlock()
 
-	// Setup a reaping routing
 	ah.timer = time.AfterFunc(timeout, func() {
 		m.AckLock.Lock()
 		delete(m.AckHandlers, seqNo)
@@ -835,7 +832,7 @@ func (m *Members) InvokeNAckHandler(nack NAckResp) {
 // 它将确保incarnation超过给定的 accusedInc 值，或者你可以提供 0 来获取下一个incarnation。
 // 这将改变传入的节点状态，所以必须在持有NodeLock情况下调用这个。
 func (m *Members) refute(me *NodeState, accusedInc uint32) {
-	inc := m.nextIncarnation()
+	inc := m.NextIncarnation()
 	if accusedInc >= inc {
 		inc = m.skipIncarnation(accusedInc - inc + 1)
 	}

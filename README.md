@@ -73,12 +73,12 @@ sendAndReceiveState()
     
     sendBuf = CompressMsg (1 byte) + buf
     
-    sendBuf = EncryptMsg (1 byte) + messageLength (4 byte) + sendBuf + stream_label (optional)
+    sendBuf = EncryptMsg (1 byte) + messageLength (4 byte) + sendBuf + stream_Label (optional)
     
     
     
     
-另外:如果有label
+另外:如果有Label
     HasLabelMsg (1 byte) + LabelSize (1 byte) +  LabelData (LabelSize byte) + sendBuf
     
     
@@ -106,6 +106,14 @@ UserMsg
 
 
 
+BTree
+```
+tq.Max
+tq.Len
+tq.Delete
+tq.AscendRange
+tq.Ascend   按照升序遍历
+tq.Descend  按照将序遍历
 
-
+```
 

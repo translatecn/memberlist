@@ -813,7 +813,7 @@ func TestIngestPacket_CRC(t *testing.T) {
 	logs := &bytes.Buffer{}
 	logger := log.New(logs, "", 0)
 	m.Logger = logger
-	m.IngestPacket(in, udp.LocalAddr(), time.Now())
+	m.HandleIngestPacket(in, udp.LocalAddr(), time.Now())
 
 	if !strings.Contains(logs.String(), "invalid checksum") {
 		t.Fatalf("bad: %s", logs.String())
@@ -836,10 +836,10 @@ func TestIngestPacket_ExportedFunc_EmptyMessage(t *testing.T) {
 	m.Logger = logger
 
 	type ingestionAwareTransport interface {
-		IngestPacket(conn net.Conn, Addr net.Addr, now time.Time, shouldClose bool) error
+		RecIngestPacket(conn net.Conn, Addr net.Addr, now time.Time, shouldClose bool) error
 	}
 
-	err := m.Transport.(ingestionAwareTransport).IngestPacket(emptyConn, udp.LocalAddr(), time.Now(), true)
+	err := m.Transport.(ingestionAwareTransport).RecIngestPacket(emptyConn, udp.LocalAddr(), time.Now(), true)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "packet too short")
 }

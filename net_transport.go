@@ -1,9 +1,9 @@
-package test
+package memberlist
 
 import (
 	"bytes"
 	"fmt"
-	"github.com/hashicorp/memberlist"
+	"github.com/hashicorp/memberlist/pkg"
 	"io"
 	"log"
 	"net"
@@ -15,8 +15,7 @@ import (
 )
 
 const (
-	// udpPacketBufSize is used to buffer incoming packets during read
-	// operations.
+	// udp读缓冲区大小
 	udpPacketBufSize = 65536
 
 	// udpRecvBufSize is a large buffer size that we attempt to set UDP
@@ -34,16 +33,16 @@ type NetTransportConfig struct {
 // NetTransport 是一个传输实现，使用无连接的UDP进行数据包操作，并使用临时的TCP连接进行流操作。
 type NetTransport struct {
 	config       *NetTransportConfig
-	packetCh     chan *memberlist.Packet
+	packetCh     chan *Packet
 	streamCh     chan net.Conn
 	logger       *log.Logger
 	wg           sync.WaitGroup
 	tcpListeners []*net.TCPListener
-	udpListeners []*net.UDPConn
+	UdpListeners []*net.UDPConn
 	shutdown     int32
 }
 
-var _ memberlist.NodeAwareTransport = (*NetTransport)(nil)
+var _ NodeAwareTransport = (*NetTransport)(nil)
 
 // NewNetTransport 创建传输端点
 func NewNetTransport(config *NetTransportConfig) (*NetTransport, error) {
@@ -54,7 +53,7 @@ func NewNetTransport(config *NetTransportConfig) (*NetTransport, error) {
 	var ok bool
 	t := NetTransport{
 		config:   config,
-		packetCh: make(chan *memberlist.Packet),
+		packetCh: make(chan *Packet), // 阻塞
 		streamCh: make(chan net.Conn),
 		logger:   config.Logger,
 	}
@@ -91,7 +90,7 @@ func NewNetTransport(config *NetTransportConfig) (*NetTransport, error) {
 		if err := setUDPRecvBuf(udpLn); err != nil {
 			return nil, fmt.Errorf("调整UDP缓冲区大小失败: %v", err)
 		}
-		t.udpListeners = append(t.udpListeners, udpLn)
+		t.UdpListeners = append(t.UdpListeners, udpLn)
 	}
 
 	// 现在我们已经能够创建它们了。
@@ -99,7 +98,7 @@ func NewNetTransport(config *NetTransportConfig) (*NetTransport, error) {
 		t.wg.Add(2)
 		// 开始接收请求
 		go t.tcpListen(t.tcpListeners[i])
-		go t.udpListen(t.udpListeners[i])
+		go t.UdpListen(t.UdpListeners[i])
 	}
 
 	ok = true
@@ -157,12 +156,12 @@ func (t *NetTransport) FinalAdvertiseAddr(ip string, port int) (net.IP, int, err
 
 // WriteTo 发送数据到Addr
 func (t *NetTransport) WriteTo(b []byte, Addr string) (time.Time, error) {
-	a := memberlist.Address{Addr: Addr, Name: ""}
+	a := Address{Addr: Addr, Name: ""}
 	return t.WriteToAddress(b, a)
 }
 
 // WriteToAddress 往a发送数据
-func (t *NetTransport) WriteToAddress(b []byte, a memberlist.Address) (time.Time, error) {
+func (t *NetTransport) WriteToAddress(b []byte, a Address) (time.Time, error) {
 	Addr := a.Addr
 	udpAddr, err := net.ResolveUDPAddr("udp", Addr)
 	if err != nil {
@@ -173,17 +172,17 @@ func (t *NetTransport) WriteToAddress(b []byte, a memberlist.Address) (time.Time
 	// packet sending interface on the first one. Take the time after the
 	// write call comes back, which will underestimate the time a little,
 	// but help account for any delays before the write occurs.
-	_, err = t.udpListeners[0].WriteTo(b, udpAddr)
+	_, err = t.UdpListeners[0].WriteTo(b, udpAddr)
 	return time.Now(), err
 }
 
-// See Transport.
-func (t *NetTransport) PacketCh() <-chan *memberlist.Packet {
+// PacketCh 返回 packetCh
+func (t *NetTransport) PacketCh() <-chan *Packet {
 	return t.packetCh
 }
 
-// See IngestionAwareTransport.
-func (t *NetTransport) IngestPacket(conn net.Conn, Addr net.Addr, now time.Time, shouldClose bool) error {
+// RecIngestPacket
+func (t *NetTransport) RecIngestPacket(conn net.Conn, Addr net.Addr, now time.Time, shouldClose bool) error {
 	if shouldClose {
 		defer conn.Close()
 	}
@@ -198,11 +197,10 @@ func (t *NetTransport) IngestPacket(conn net.Conn, Addr net.Addr, now time.Time,
 	// message. This is checked elsewhere for writes coming in directly from
 	// the UDP socket.
 	if n := buf.Len(); n < 1 {
-		return fmt.Errorf("packet too short (%d bytes) %s", n, memberlist.LogAddress(Addr))
+		return fmt.Errorf("packet too short (%d bytes) %s", n, pkg.LogAddress(Addr))
 	}
 
-	// Inject the packet.
-	t.packetCh <- &memberlist.Packet{
+	t.packetCh <- &Packet{
 		Buf:       buf.Bytes(),
 		From:      Addr,
 		Timestamp: now,
@@ -212,12 +210,12 @@ func (t *NetTransport) IngestPacket(conn net.Conn, Addr net.Addr, now time.Time,
 
 // DialTimeout 与a建联，设置了超时时间
 func (t *NetTransport) DialTimeout(Addr string, timeout time.Duration) (net.Conn, error) {
-	a := memberlist.Address{Addr: Addr, Name: ""}
+	a := Address{Addr: Addr, Name: ""}
 	return t.DialAddressTimeout(a, timeout)
 }
 
 // DialAddressTimeout 与a建联，设置了超时时间
-func (t *NetTransport) DialAddressTimeout(a memberlist.Address, timeout time.Duration) (net.Conn, error) {
+func (t *NetTransport) DialAddressTimeout(a Address, timeout time.Duration) (net.Conn, error) {
 	Addr := a.Addr
 
 	dialer := net.Dialer{Timeout: timeout}
@@ -244,7 +242,7 @@ func (t *NetTransport) Shutdown() error {
 	for _, conn := range t.tcpListeners {
 		conn.Close()
 	}
-	for _, conn := range t.udpListeners {
+	for _, conn := range t.UdpListeners {
 		conn.Close()
 	}
 	t.wg.Wait()
@@ -290,34 +288,30 @@ func (t *NetTransport) tcpListen(tcpLn *net.TCPListener) {
 	}
 }
 
-// udpListen 处理创建的UDP链接
-func (t *NetTransport) udpListen(udpLn *net.UDPConn) {
+// UdpListen 处理创建的UDP链接
+func (t *NetTransport) UdpListen(udpLn *net.UDPConn) {
 	defer t.wg.Done()
 	for {
-		// Do a blocking read into a fresh buffer. Grab a time stamp as
-		// close as possible to the I/O.
 		buf := make([]byte, udpPacketBufSize)
 		n, Addr, err := udpLn.ReadFrom(buf)
 		ts := time.Now()
 		if err != nil {
+			// 出错时，判断是不是正在停止
 			if s := atomic.LoadInt32(&t.shutdown); s == 1 {
 				break
 			}
 
-			t.logger.Printf("[错误] memberlist: Error reading UDP packet: %v", err)
+			t.logger.Printf("[错误] memberlist:读取udp包失败: %v", err)
 			continue
 		}
 
-		// Check the length - it needs to have at least one byte to be a
-		// proper message.
 		if n < 1 {
-			t.logger.Printf("[错误] memberlist: UDP packet too short (%d bytes) %s",
-				len(buf), memberlist.LogAddress(Addr))
+			t.logger.Printf("[错误] memberlist:UDP包太小(%d bytes) %s", len(buf), pkg.LogAddress(Addr))
 			continue
 		}
 
-		t.packetCh <- &memberlist.Packet{
-			Buf:       buf[:n],
+		t.packetCh <- &Packet{
+			Buf:       buf[:n], // udp包大小不会超过udpPacketBufSize
 			From:      Addr,
 			Timestamp: ts,
 		}
