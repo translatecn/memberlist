@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+// ----------------------------------------- OK -------------------------------------------------
+
 // LocalNode 返回本机的Node结构体信息
 func (m *Members) LocalNode() *Node {
 	m.NodeLock.RLock()
@@ -285,7 +287,7 @@ func (m *Members) AliveNode(a *Alive, notify chan struct{}, bootstrap bool) {
 		if a.Incarnation == state.Incarnation && bytes.Equal(a.Meta, state.Meta) && bytes.Equal(a.Vsn, versions) {
 			return
 		}
-		m.refute(state, a.Incarnation)
+		m.Refute(state, a.Incarnation)
 		m.Logger.Printf("[WARN] memberlist: 拒绝Alive消息 '%s' (%v:%d) meta:(%v VS %v), vsn:(%v VS %v)", a.Node, net.IP(a.Addr), a.Port, a.Meta, state.Meta, a.Vsn, versions)
 	} else {
 		// 运行初走这里;
@@ -351,7 +353,7 @@ func (m *Members) SuspectNode(s *Suspect) {
 	}
 
 	if state.Name == m.Config.Name {
-		m.refute(state, s.Incarnation)
+		m.Refute(state, s.Incarnation)
 		m.Logger.Printf("[WARN] memberlist: 反驳质疑消息 (from: %s)", s.From)
 		return
 	} else {
@@ -426,7 +428,7 @@ func (m *Members) DeadNode(d *Dead) {
 	if state.Name == m.Config.Name {
 		// 如果我们不离开，我们需要反驳
 		if !m.hasLeft() {
-			m.refute(state, d.Incarnation)
+			m.Refute(state, d.Incarnation)
 			m.Logger.Printf("[WARN] memberlist: 拒绝死亡消息 (from: %s)", d.From)
 			return
 		}

@@ -40,7 +40,7 @@ associated [Godoc](http://godoc.org/github.com/hashicorp/memberlist).
 ``` 
 UDP gossip 
 TCP push/pull
-refute gossip
+Refute gossip
 ```
 
 ### Node Change
@@ -75,11 +75,21 @@ sendAndReceiveState()
     
     sendBuf = EncryptMsg (1 byte) + messageLength (4 byte) + sendBuf + stream_Label (optional)
     
-    
+            
     
     
 另外:如果有Label
     HasLabelMsg (1 byte) + LabelSize (1 byte) +  LabelData (LabelSize byte) + sendBuf
+    
+UDP 
+    HasLabelMsg (1 byte) + LabelSize (1 byte) +  LabelData (LabelSize byte) + sendBuf
+    ----->  sendBuf 通过 私钥、label 解密
+    buf = HasCrcMsg (1 byte) + crcSum(4 byte) + msgType(1 byte) + msg
+    
+    
+    
+    msg:
+        CompoundMsg + len(msgs) uint8 + 每个消息的长度uint16 + 每个消息
     
     
 ```
@@ -101,12 +111,10 @@ UserMsg
 
 1、StateDead与StateLeft的区别
 
-
 2、广播出去的包，server怎么处理
 
-
-
 BTree
+
 ```
 tq.Max
 tq.Len
@@ -117,3 +125,25 @@ tq.Descend  按照将序遍历
 
 ```
 
+``` Broadcast
+c:
+    AliveNode                           |--------> Gossip()      定时广播到随机的机器
+    DeadNode          ------> Btree  ---|      在主动发包到某个节点的过程中，填充额外的信息
+    EncodeBroadcast                     |--->  encodeAndSendMsg  // --->  调用方 handlePing、handleIndirectPing、ProbeNode、Ping  
+    Refute
+
+s:
+    <------
+        //_ = m.Transport.(*NetTransport).RecIngestPacket //往通道发消息
+        //_ = m.Transport.(*NetTransport).UdpListen // 往通道发消息
+			
+    PacketListen   <-----
+        HandleIngestPacket
+            HandleCommand
+                handlePing
+                handleIndirectPing
+                ProbeNode
+                Ping  
+
+
+```

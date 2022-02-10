@@ -147,24 +147,18 @@ func MakeCompoundMessages(msgs [][]byte) []*bytes.Buffer {
 	return bufs
 }
 
-// MakeCompoundMessage takes a list of messages and generates
-// a single compound message containing all of them
+// MakeCompoundMessage  将多个消息组合成复合消息
 func MakeCompoundMessage(msgs [][]byte) *bytes.Buffer {
-	// Create a local buffer
+	// CompoundMsg + len(msgs) uint8 + 每个消息的长度uint16 + 每个消息
 	buf := bytes.NewBuffer(nil)
 
-	// Write out the type
 	buf.WriteByte(uint8(CompoundMsg))
-
-	// Write out the number of message
 	buf.WriteByte(uint8(len(msgs)))
 
-	// Add the message lengths
 	for _, m := range msgs {
 		binary.Write(buf, binary.BigEndian, uint16(len(m)))
 	}
 
-	// Append the messages
 	for _, m := range msgs {
 		buf.Write(m)
 	}
@@ -172,38 +166,37 @@ func MakeCompoundMessage(msgs [][]byte) *bytes.Buffer {
 	return buf
 }
 
-// DecodeCompoundMessage splits a compound message and returns
-// the slices of individual messages. Also returns the number
-// of truncated messages and any potential error
+// DecodeCompoundMessage 切割复合消息, 【len,xxxxxxxxxx】
 func DecodeCompoundMessage(buf []byte) (trunc int, parts [][]byte, err error) {
+	// trunc 有几部分没有数据
+	// CompoundMsg +
+	// len(msgs) uint8 + 每个消息的长度uint16 + 每个消息
 	if len(buf) < 1 {
-		err = fmt.Errorf("missing compound length byte")
+		err = fmt.Errorf("复合消息长度未知")
 		return
 	}
-	numParts := int(buf[0])
+	numParts := int(buf[0]) // 几个消息
 	buf = buf[1:]
 
-	// Check we have enough bytes
+	// 检查是否有足够的数据，判断 "每个消息的长度uint16 " 这一部分数据全不全
 	if len(buf) < numParts*2 {
-		err = fmt.Errorf("truncated len slice")
+		err = fmt.Errorf("截断的长片")
 		return
 	}
 
-	// Decode the lengths
-	lengths := make([]uint16, numParts)
+	// 解码
+	lengths := make([]uint16, numParts) // 每部分的长度
 	for i := 0; i < numParts; i++ {
 		lengths[i] = binary.BigEndian.Uint16(buf[i*2 : i*2+2])
 	}
-	buf = buf[numParts*2:]
+	buf = buf[numParts*2:] // 剩余的消息体
 
-	// Split each message
+	// 切割消息
 	for idx, msgLen := range lengths {
 		if len(buf) < int(msgLen) {
 			trunc = numParts - idx
 			return
 		}
-
-		// Extract the slice, seek past on the buffer
 		slice := buf[:msgLen]
 		buf = buf[msgLen:]
 		parts = append(parts, slice)

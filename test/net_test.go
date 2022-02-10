@@ -27,7 +27,7 @@ func TestHandleCompoundPing(t *testing.T) {
 	m := GetMemberlist(t, func(c *memberlist.Config) {
 		c.EnableCompression = false
 	})
-	defer m.Shutdown()
+	defer m.SetShutdown()
 
 	udp := listenUDP(t)
 	defer udp.Close()
@@ -96,7 +96,7 @@ func TestHandlePing(t *testing.T) {
 	m := GetMemberlist(t, func(c *memberlist.Config) {
 		c.EnableCompression = false
 	})
-	defer m.Shutdown()
+	defer m.SetShutdown()
 
 	udp := listenUDP(t)
 	defer udp.Close()
@@ -160,7 +160,7 @@ func TestHandlePing_WrongNode(t *testing.T) {
 	m := GetMemberlist(t, func(c *memberlist.Config) {
 		c.EnableCompression = false
 	})
-	defer m.Shutdown()
+	defer m.SetShutdown()
 
 	udp := listenUDP(t)
 	defer udp.Close()
@@ -202,7 +202,7 @@ func TestHandleIndirectPing(t *testing.T) {
 	m := GetMemberlist(t, func(c *memberlist.Config) {
 		c.EnableCompression = false
 	})
-	defer m.Shutdown()
+	defer m.SetShutdown()
 
 	udp := listenUDP(t)
 	defer udp.Close()
@@ -286,7 +286,7 @@ func TestTCPPing(t *testing.T) {
 	// Close() call here.
 
 	m := GetMemberlist(t, nil)
-	defer m.Shutdown()
+	defer m.SetShutdown()
 
 	pingTimeout := m.Config.ProbeInterval
 	pingTimeMax := m.Config.ProbeInterval + 10*time.Millisecond
@@ -466,7 +466,7 @@ func TestTCPPing(t *testing.T) {
 
 func TestTCPPushPull(t *testing.T) {
 	m := GetMemberlist(t, nil)
-	defer m.Shutdown()
+	defer m.SetShutdown()
 
 	m.Nodes = append(m.Nodes, &memberlist.NodeState{
 		Node: memberlist.Node{
@@ -591,7 +591,7 @@ func TestTCPPushPull(t *testing.T) {
 
 func TestSendMsg_Piggyback(t *testing.T) {
 	m := GetMemberlist(t, nil)
-	defer m.Shutdown()
+	defer m.SetShutdown()
 
 	// Add a message to be broadcast
 	a := memberlist.Alive{
@@ -655,7 +655,7 @@ func TestSendMsg_Piggyback(t *testing.T) {
 	// get the parts
 	trunc, parts, err := memberlist.DecodeCompoundMessage(in[1:])
 	if trunc != 0 {
-		t.Fatalf("unexpected truncation")
+		t.Fatalf("意外截断")
 	}
 	if len(parts) != 2 {
 		t.Fatalf("unexpected parts %v", parts)
@@ -696,7 +696,7 @@ func TestEncryptDecryptState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}
-	defer m.Shutdown()
+	defer m.SetShutdown()
 
 	crypt, err := m.EncryptLocalState(state, "")
 	if err != nil {
@@ -721,7 +721,7 @@ func TestRawSendUdp_CRC(t *testing.T) {
 	m := GetMemberlist(t, func(c *memberlist.Config) {
 		c.EnableCompression = false
 	})
-	defer m.Shutdown()
+	defer m.SetShutdown()
 
 	udp := listenUDP(t)
 	defer udp.Close()
@@ -782,7 +782,7 @@ func TestIngestPacket_CRC(t *testing.T) {
 	m := GetMemberlist(t, func(c *memberlist.Config) {
 		c.EnableCompression = false
 	})
-	defer m.Shutdown()
+	defer m.SetShutdown()
 
 	udp := listenUDP(t)
 	defer udp.Close()
@@ -811,8 +811,8 @@ func TestIngestPacket_CRC(t *testing.T) {
 	in[1] <<= 1
 
 	logs := &bytes.Buffer{}
-	logger := log.New(logs, "", 0)
-	m.Logger = logger
+	Logger := log.New(logs, "", 0)
+	m.Logger = Logger
 	m.HandleIngestPacket(in, udp.LocalAddr(), time.Now())
 
 	if !strings.Contains(logs.String(), "invalid checksum") {
@@ -824,7 +824,7 @@ func TestIngestPacket_ExportedFunc_EmptyMessage(t *testing.T) {
 	m := GetMemberlist(t, func(c *memberlist.Config) {
 		c.EnableCompression = false
 	})
-	defer m.Shutdown()
+	defer m.SetShutdown()
 
 	udp := listenUDP(t)
 	defer udp.Close()
@@ -832,8 +832,8 @@ func TestIngestPacket_ExportedFunc_EmptyMessage(t *testing.T) {
 	emptyConn := &emptyReadNetConn{}
 
 	logs := &bytes.Buffer{}
-	logger := log.New(logs, "", 0)
-	m.Logger = logger
+	Logger := log.New(logs, "", 0)
+	m.Logger = Logger
 
 	type ingestionAwareTransport interface {
 		RecIngestPacket(conn net.Conn, Addr net.Addr, now time.Time, shouldClose bool) error
@@ -863,7 +863,7 @@ func TestGossip_MismatchedKeys(t *testing.T) {
 
 	m1, err := memberlist.Create(c1)
 	require.NoError(t, err)
-	defer m1.Shutdown()
+	defer m1.SetShutdown()
 
 	bindPort := m1.Config.BindPort
 
@@ -873,7 +873,7 @@ func TestGossip_MismatchedKeys(t *testing.T) {
 
 	m2, err := memberlist.Create(c2)
 	require.NoError(t, err)
-	defer m2.Shutdown()
+	defer m2.SetShutdown()
 
 	// Make sure we get this error on the joining side
 	_, err = m2.Join([]string{c1.Name + "/" + c1.BindAddr})

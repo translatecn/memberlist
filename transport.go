@@ -47,10 +47,10 @@ type Transport interface {
 	DialTimeout(Addr string, timeout time.Duration) (net.Conn, error)
 
 	// StreamCh pull模式、返回一个通道，可以处理来自其他节点传入流连接。
-	StreamCh() <-chan net.Conn
+	GetStreamCh() <-chan net.Conn
 
 	// Shutdown 停止、清理资源
-	Shutdown() error
+	SetShutdown() error
 }
 
 type Address struct {

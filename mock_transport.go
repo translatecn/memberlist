@@ -27,7 +27,7 @@ func (n *MockNetwork) NewTransport(name string) *MockTransport {
 		net:      n,
 		Addr:     &MockAddress{Addr, name},
 		packetCh: make(chan *Packet),
-		streamCh: make(chan net.Conn),
+		StreamCh: make(chan net.Conn),
 	}
 
 	if n.TransportsByAddr == nil {
@@ -65,7 +65,7 @@ type MockTransport struct {
 	net      *MockNetwork
 	Addr     *MockAddress
 	packetCh chan *Packet
-	streamCh chan net.Conn
+	StreamCh chan net.Conn
 }
 
 var _ NodeAwareTransport = (*MockTransport)(nil)
@@ -159,23 +159,23 @@ func (t *MockTransport) DialAddressTimeout(a Address, timeout time.Duration) (ne
 	}
 
 	p1, p2 := net.Pipe()
-	dest.streamCh <- p1
+	dest.StreamCh <- p1
 	return p2, nil
 }
 
 // See Transport.
-func (t *MockTransport) StreamCh() <-chan net.Conn {
-	return t.streamCh
+func (t *MockTransport) GetStreamCh() <-chan net.Conn {
+	return t.StreamCh
 }
 
 // See NodeAwareTransport.
 func (t *MockTransport) IngestStream(conn net.Conn) error {
-	t.streamCh <- conn
+	t.StreamCh <- conn
 	return nil
 }
 
 // See Transport.
-func (t *MockTransport) Shutdown() error {
+func (t *MockTransport) SetShutdown() error {
 	return nil
 }
 

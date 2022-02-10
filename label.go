@@ -42,16 +42,16 @@ func RemoveLabelHeaderFromPacket(buf []byte) (newBuf []byte, Label string, err e
 	}
 
 	if len(buf) < 2 {
-		return nil, "", fmt.Errorf("cannot Decode Label; packet has been truncated")
+		return nil, "", fmt.Errorf("不能解码标签；数据包已被截断")
 	}
 
 	size := int(buf[1])
 	if size < 1 {
-		return nil, "", fmt.Errorf("Label header cannot be empty when present")
+		return nil, "", fmt.Errorf("标签头存在时不能为空")
 	}
 
 	if len(buf) < 2+size {
-		return nil, "", fmt.Errorf("cannot Decode Label; packet has been truncated")
+		return nil, "", fmt.Errorf("不能解码标签；数据包已被截断")
 	}
 
 	Label = string(buf[2 : 2+size])

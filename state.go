@@ -260,261 +260,6 @@ func FailedRemote(err error) bool {
 	return false
 }
 
-// ProbeNode 单个节点的故障检查。
-func (m *Members) ProbeNode(node *NodeState) {
-
-	// 我们使用我们的health awareness来扩展整个探测间隔，
-	// 所以如果我们检测到问题，我们会放慢速度。
-	// 调用我们的探测器可以处理我们运行超过基本间隔的情况，并会跳过错过的刻度。
-	probeInterval := m.Awareness.ScaleTimeout(m.Config.ProbeInterval) // 根据健康度、设置探活时间
-
-	selfAddr, selfPort := m.getAdvertise()
-	ping := Ping{
-		SeqNo:      m.NextSeqNo(),
-		Node:       node.Name,
-		SourceAddr: selfAddr,
-		SourcePort: selfPort,
-		SourceNode: m.Config.Name,
-	}
-	ackCh := make(chan AckMessage, m.Config.IndirectChecks+1)
-	nackCh := make(chan struct{}, m.Config.IndirectChecks+1)
-	m.SetProbeChannels(ping.SeqNo, ackCh, nackCh, probeInterval)
-
-	// Mark the sent time here, which should be after any pre-processing but
-	// before system calls to do the actual send. This probably over-reports
-	// a bit, but it's the best we can do. We had originally put this right
-	// after the I/O, but that would sometimes give negative RTT measurements
-	// which was not desirable.
-	sent := time.Now()
-
-	// Send a Ping to the node. If this node looks like it's Suspect or Dead,
-	// also tack on a Suspect message so that it has a chance to refute as
-	// soon as possible.
-	Deadline := sent.Add(probeInterval)
-	Addr := node.Address()
-
-	// Arrange for our self-awareness to get updated.
-	var awarenessDelta int
-	defer func() {
-		m.Awareness.ApplyDelta(awarenessDelta)
-	}()
-	if node.State == StateAlive {
-		if err := m.encodeAndSendMsg(node.FullAddress(), PingMsg, &ping); err != nil {
-			m.Logger.Printf("[错误] memberlist: Failed to send Ping: %s", err)
-			if FailedRemote(err) {
-				goto HANDLE_REMOTE_FAILURE
-			} else {
-				return
-			}
-		}
-	} else {
-		var msgs [][]byte
-		if buf, err := Encode(PingMsg, &ping); err != nil {
-			m.Logger.Printf("[错误] memberlist: Failed to Encode Ping message: %s", err)
-			return
-		} else {
-			msgs = append(msgs, buf.Bytes())
-		}
-		s := Suspect{Incarnation: node.Incarnation, Node: node.Name, From: m.Config.Name}
-		if buf, err := Encode(SuspectMsg, &s); err != nil {
-			m.Logger.Printf("[错误] memberlist: Failed to Encode Suspect message: %s", err)
-			return
-		} else {
-			msgs = append(msgs, buf.Bytes())
-		}
-
-		compound := MakeCompoundMessage(msgs)
-		if err := m.RawSendMsgPacket(node.FullAddress(), &node.Node, compound.Bytes()); err != nil {
-			m.Logger.Printf("[错误] memberlist: Failed to send compound Ping and Suspect message to %s: %s", Addr, err)
-			if FailedRemote(err) {
-				goto HANDLE_REMOTE_FAILURE
-			} else {
-				return
-			}
-		}
-	}
-
-	// Arrange for our self-awareness to get updated. At this point we've
-	// sent the Ping, so any return statement means the probe succeeded
-	// which will improve our health until we get to the failure scenarios
-	// at the end of this function, which will alter this delta variable
-	// accordingly.
-	awarenessDelta = -1
-
-	// Wait for response or round-trip-time.
-	select {
-	case v := <-ackCh:
-		if v.Complete == true {
-			if m.Config.Ping != nil {
-				rtt := v.Timestamp.Sub(sent)
-				m.Config.Ping.NotifyPingComplete(&node.Node, rtt, v.Payload)
-			}
-			return
-		}
-
-		// As an edge case, if we get a timeout, we need to re-enqueue it
-		// here to break out of the select below.
-		if v.Complete == false {
-			ackCh <- v
-		}
-	case <-time.After(m.Config.ProbeTimeout):
-		// Note that we don't scale this timeout based on awareness and
-		// the health score. That's because we don't really expect waiting
-		// longer to help get UDP through. Since health does extend the
-		// probe interval it will give the TCP fallback more time, which
-		// is more active in dealing with lost packets, and it gives more
-		// time to wait for indirect acks/nacks.
-		m.Logger.Printf("[DEBUG] memberlist: Failed Ping: %s (timeout reached)", node.Name)
-	}
-
-HANDLE_REMOTE_FAILURE:
-	// Get some random live Nodes.
-	m.NodeLock.RLock()
-	kNodes := KRandomNodes(m.Config.IndirectChecks, m.Nodes, func(n *NodeState) bool {
-		return n.Name == m.Config.Name ||
-			n.Name == node.Name ||
-			n.State != StateAlive
-	})
-	m.NodeLock.RUnlock()
-
-	// Attempt an indirect Ping.
-	expectedNacks := 0
-	selfAddr, selfPort = m.getAdvertise()
-	ind := IndirectPingReq{
-		SeqNo:      ping.SeqNo,
-		Target:     node.Addr,
-		Port:       node.Port,
-		Node:       node.Name,
-		SourceAddr: selfAddr,
-		SourcePort: selfPort,
-		SourceNode: m.Config.Name,
-	}
-	for _, peer := range kNodes {
-		// We only expect nack to be sent from peers who understand
-		// version 4 of the protocol.
-		if ind.Nack = peer.PMax >= 4; ind.Nack {
-			expectedNacks++
-		}
-
-		if err := m.encodeAndSendMsg(peer.FullAddress(), IndirectPingMsg, &ind); err != nil {
-			m.Logger.Printf("[错误] memberlist: Failed to send indirect Ping: %s", err)
-		}
-	}
-
-	// Also make an attempt to contact the node directly over TCP. This
-	// helps prevent confused clients who get isolated from UDP traffic
-	// but can still speak TCP (which also means they can possibly report
-	// misinformation to other Nodes via anti-entropy), avoiding flapping in
-	// the cluster.
-	//
-	// This is a little unusual because we will attempt a TCP Ping to any
-	// member who understands version 3 of the protocol, regardless of
-	// which 协议版本 we are speaking. That's why we've included a
-	// Config option to turn this off if desired.
-	fallbackCh := make(chan bool, 1)
-
-	disableTcpPings := m.Config.DisableTcpPings ||
-		(m.Config.DisableTcpPingsForNode != nil && m.Config.DisableTcpPingsForNode(node.Name))
-	if (!disableTcpPings) && (node.PMax >= 3) {
-		go func() {
-			defer close(fallbackCh)
-			didContact, err := m.SendPingAndWaitForAck(node.FullAddress(), ping, Deadline)
-			if err != nil {
-				var to string
-				if ne, ok := err.(net.Error); ok && ne.Timeout() {
-					to = fmt.Sprintf("timeout %s: ", probeInterval)
-				}
-				m.Logger.Printf("[错误] memberlist: Failed fallback Ping: %s%s", to, err)
-			} else {
-				fallbackCh <- didContact
-			}
-		}()
-	} else {
-		close(fallbackCh)
-	}
-
-	// Wait for the acks or timeout. Note that we don't check the fallback
-	// channel here because we want to issue a warning below if that's the
-	// *only* way we hear back from the peer, so we have to let this time
-	// out first to allow the normal UDP-based acks to come in.
-	select {
-	case v := <-ackCh:
-		if v.Complete == true {
-			return
-		}
-	}
-
-	// Finally, poll the fallback channel. The timeouts are set such that
-	// the channel will have something or be closed without having to wait
-	// any additional time here.
-	for didContact := range fallbackCh {
-		if didContact {
-			m.Logger.Printf("[WARN] memberlist: Was able to connect to %s but other probes failed, network may be misconfigured", node.Name)
-			return
-		}
-	}
-
-	// Update our self-awareness based on the results of this failed probe.
-	// If we don't have peers who will send nacks then we penalize for any
-	// failed probe as a simple health metric. If we do have peers to nack
-	// verify, then we can use that as a more sophisticated measure of self-
-	// health because we assume them to be working, and they can help us
-	// decide if the probed node was really Dead or if it was something wrong
-	// with ourselves.
-	awarenessDelta = 0
-	if expectedNacks > 0 {
-		if nackCount := len(nackCh); nackCount < expectedNacks {
-			awarenessDelta += (expectedNacks - nackCount)
-		}
-	} else {
-		awarenessDelta += 1
-	}
-
-	// No acks received from target, Suspect it as failed.
-	m.Logger.Printf("[INFO] memberlist: Suspect %s has failed, no acks received", node.Name)
-	s := Suspect{Incarnation: node.Incarnation, Node: node.Name, From: m.Config.Name}
-	m.SuspectNode(&s)
-}
-
-// Ping 发送ping到指定节点
-func (m *Members) Ping(node string, Addr net.Addr) (time.Duration, error) {
-	// ls-2018.local  ,直接测的本机          127.0.0.1:8000
-	// 准备一个Ping消息并设置一个ack处理程序。
-	selfAddr, selfPort := m.getAdvertise() // 10.10.16.207  8000
-	ping := Ping{
-		SeqNo:      m.NextSeqNo(),
-		Node:       node,
-		SourceAddr: selfAddr,
-		SourcePort: selfPort,
-		SourceNode: m.Config.Name,
-	}
-	ackCh := make(chan AckMessage, m.Config.IndirectChecks+1)
-	m.SetProbeChannels(ping.SeqNo, ackCh, nil, m.Config.ProbeInterval) // 设置ackFc NackFc 以及超时Fc
-
-	a := Address{Addr: Addr.String(), Name: node}
-	if err := m.encodeAndSendMsg(a, PingMsg, &ping); err != nil {
-		return 0, err
-	}
-
-	// Mark the sent time here, which should be after any pre-processing and
-	// system calls to do the actual send. This probably under-reports a bit,
-	// but it's the best we can do.
-	sent := time.Now()
-
-	// Wait for response or timeout.
-	select {
-	case v := <-ackCh:
-		if v.Complete == true {
-			return v.Timestamp.Sub(sent), nil
-		}
-	case <-time.After(m.Config.ProbeTimeout):
-		// Timeout, return an error below.
-	}
-
-	m.Logger.Printf("[DEBUG] memberlist: Failed UDP Ping: %v (timeout reached)", node)
-	return 0, NoPingResponseError{ping.Node}
-}
-
 // ResetNodes 清除Dead节点,并将节点列表刷新
 func (m *Members) ResetNodes() {
 	m.NodeLock.Lock()
@@ -538,98 +283,130 @@ func (m *Members) ResetNodes() {
 	ShuffleNodes(m.Nodes)
 }
 
-// gossip is invoked every GossipInterval period to broadcast our gossip
-// messages to a few random Nodes.
-func (m *Members) Gossip() {
-
-	// Get some random live, Suspect, or recently Dead Nodes
-	m.NodeLock.RLock()
-	kNodes := KRandomNodes(m.Config.GossipNodes, m.Nodes, func(n *NodeState) bool {
-		if n.Name == m.Config.Name {
-			return true
-		}
-
-		switch n.State {
-		case StateAlive, StateSuspect:
-			return false
-
-		case StateDead:
-			return time.Since(n.StateChange) > m.Config.GossipToTheDeadTime
-
-		default:
-			return true
-		}
-	})
-	m.NodeLock.RUnlock()
-
-	// Compute the bytes available
-	bytesAvail := m.Config.UDPBufferSize - CompoundHeaderOverhead - LabelOverhead(m.Config.Label)
-	if m.Config.EncryptionEnabled() {
-		bytesAvail -= encryptOverhead(m.EncryptionVersion())
-	}
-
-	for _, node := range kNodes {
-		// Get any pending Broadcasts
-		msgs := m.getBroadcasts(CompoundOverhead, bytesAvail)
-		if len(msgs) == 0 {
-			return
-		}
-
-		Addr := node.Address()
-		if len(msgs) == 1 {
-			// Send single message as is
-			if err := m.RawSendMsgPacket(node.FullAddress(), &node, msgs[0]); err != nil {
-				m.Logger.Printf("[错误] memberlist: Failed to send gossip to %s: %s", Addr, err)
-			}
-		} else {
-			// Otherwise create and send one or more compound messages
-			compounds := MakeCompoundMessages(msgs)
-			for _, compound := range compounds {
-				if err := m.RawSendMsgPacket(node.FullAddress(), &node, compound.Bytes()); err != nil {
-					m.Logger.Printf("[错误] memberlist: Failed to send gossip to %s: %s", Addr, err)
-				}
-			}
-		}
-	}
+// NextIncarnation 以线程安全的方式返回下一个incarnation的编号。
+func (m *Members) NextIncarnation() uint32 {
+	return atomic.AddUint32(&m.incarnation, 1)
+}
+func (m *Members) CurIncarnation() uint32 {
+	return m.incarnation
 }
 
-// PushPull is invoked periodically to randomly perform a complete state
-// exchange. Used to ensure a high level of convergence, but is also
-// reasonably expensive as the entire state of this node is exchanged
-// with the other node.
-func (m *Members) PushPull() {
-	// Get a random live node
-	m.NodeLock.RLock()
-	nodes := KRandomNodes(1, m.Nodes, func(n *NodeState) bool {
-		return n.Name == m.Config.Name ||
-			n.State != StateAlive
-	})
-	m.NodeLock.RUnlock()
+// skipIncarnation incarnation number添加偏移量
+func (m *Members) skipIncarnation(offset uint32) uint32 {
+	return atomic.AddUint32(&m.incarnation, offset)
+}
 
-	// If no Nodes, bail
-	if len(nodes) == 0 {
+// EstNumNodes 用于获得当前估计的节点数
+func (m *Members) EstNumNodes() int {
+	return int(atomic.LoadUint32(&m.numNodes))
+}
+
+type AckMessage struct {
+	Complete  bool
+	Payload   []byte
+	Timestamp time.Time
+}
+
+// SetProbeChannels 当消息确认时 发到ackCh。如果超时 complete字段会是false
+// 不需要确认，发送空struct或nil
+func (m *Members) SetProbeChannels(seqNo uint32, ackCh chan AckMessage, nackCh chan struct{}, timeout time.Duration) {
+	ackFn := func(payload []byte, timestamp time.Time) {
+		select {
+		case ackCh <- AckMessage{true, payload, timestamp}:
+		default:
+		}
+	}
+	nackFn := func() {
+		select {
+		case nackCh <- struct{}{}:
+		default:
+		}
+	}
+
+	ah := &AckHandler{ackFn, nackFn, nil}
+	m.AckLock.Lock()
+	m.AckHandlers[seqNo] = ah
+	m.AckLock.Unlock()
+
+	ah.timer = time.AfterFunc(timeout, func() {
+		m.AckLock.Lock()
+		delete(m.AckHandlers, seqNo)
+		m.AckLock.Unlock()
+		select {
+		case ackCh <- AckMessage{false, nil, time.Now()}:
+		default:
+		}
+	})
+}
+
+// SetAckHandler is used to attach a handler to be invoked when an ack with a
+// given sequence number is received. If a timeout is reached, the handler is
+// deleted. This is used for indirect pings so does not configure a function
+// for nacks.
+func (m *Members) SetAckHandler(seqNo uint32, ackFn func([]byte, time.Time), timeout time.Duration) {
+	// Add the handler
+	ah := &AckHandler{ackFn, nil, nil}
+	m.AckLock.Lock()
+	m.AckHandlers[seqNo] = ah
+	m.AckLock.Unlock()
+
+	// Setup a reaping routing
+	ah.timer = time.AfterFunc(timeout, func() {
+		m.AckLock.Lock()
+		delete(m.AckHandlers, seqNo)
+		m.AckLock.Unlock()
+	})
+}
+
+// InvokeAckHandler Invokes an ack handler if any is associated, and reaps the handler immediately
+func (m *Members) InvokeAckHandler(ack AckResp, timestamp time.Time) {
+	m.AckLock.Lock()
+	ah, ok := m.AckHandlers[ack.SeqNo]
+	delete(m.AckHandlers, ack.SeqNo)
+	m.AckLock.Unlock()
+	if !ok {
 		return
 	}
-	node := nodes[0]
-
-	// Attempt a push pull
-	if err := m.PushPullNode(node.FullAddress(), false); err != nil {
-		m.Logger.Printf("[错误] memberlist: Push/Pull with %s failed: %s", node.Name, err)
-	}
+	ah.timer.Stop()
+	ah.ackFn(ack.Payload, timestamp)
 }
 
-// PushPullNode 与一个特定的节点进行完整的状态交换。
-func (m *Members) PushPullNode(a Address, join bool) error {
-
-	remote, userState, err := m.sendAndReceiveState(a, join)
-	if err != nil {
-		return err
+// InvokeNAckHandler Invokes nack handler if any is associated.
+func (m *Members) InvokeNAckHandler(nack NAckResp) {
+	m.AckLock.Lock()
+	ah, ok := m.AckHandlers[nack.SeqNo]
+	m.AckLock.Unlock()
+	if !ok || ah.nackFn == nil {
+		return
 	}
+	ah.nackFn()
+}
 
-	if err := m.mergeRemoteState(join, remote, userState); err != nil {
-		return err
+// Refute 当收到传来的关于本节点被怀疑或死亡的信息时，会发送一个Alive gossip message。
+// 它将确保incarnation超过给定的 accusedInc 值，或者你可以提供 0 来获取下一个incarnation。
+// 这将改变传入的节点状态，所以必须在持有NodeLock情况下调用这个。
+func (m *Members) Refute(me *NodeState, accusedInc uint32) {
+	inc := m.NextIncarnation()
+	if accusedInc >= inc {
+		inc = m.skipIncarnation(accusedInc - inc + 1)
 	}
-	return nil
+	me.Incarnation = inc
+
+	// 减少health，因为我们被要求反驳一个问题。
+	m.Awareness.ApplyDelta(1)
+
+	a := Alive{
+		Incarnation: inc,
+		Node:        me.Name,
+		Addr:        me.Addr,
+		Port:        me.Port,
+		Meta:        me.Meta,
+		Vsn: []uint8{
+			me.PMin, me.PMax, me.PCur,
+			me.DMin, me.DMax, me.DCur,
+		},
+	}
+	m.EncodeBroadcast(me.Addr.String(), AliveMsg, a)
 }
 
 // VerifyProtocol 验证远端传来的NodeState 的协议版本与委托版本
@@ -727,130 +504,4 @@ func (m *Members) VerifyProtocol(remote []PushNodeState) error {
 // NextSeqNo 以线程安全的方式返回一个可用的序列号
 func (m *Members) NextSeqNo() uint32 {
 	return atomic.AddUint32(&m.SequenceNum, 1)
-}
-
-// NextIncarnation 以线程安全的方式返回下一个incarnation的编号。
-func (m *Members) NextIncarnation() uint32 {
-	return atomic.AddUint32(&m.incarnation, 1)
-}
-func (m *Members) CurIncarnation() uint32 {
-	return m.incarnation
-}
-
-// skipIncarnation incarnation number添加偏移量
-func (m *Members) skipIncarnation(offset uint32) uint32 {
-	return atomic.AddUint32(&m.incarnation, offset)
-}
-
-// EstNumNodes 用于获得当前估计的节点数
-func (m *Members) EstNumNodes() int {
-	return int(atomic.LoadUint32(&m.numNodes))
-}
-
-type AckMessage struct {
-	Complete  bool
-	Payload   []byte
-	Timestamp time.Time
-}
-
-// SetProbeChannels 当消息确认时 发到ackCh。如果超时 complete字段会是false
-// 不需要确认，发送空struct或nil
-func (m *Members) SetProbeChannels(seqNo uint32, ackCh chan AckMessage, nackCh chan struct{}, timeout time.Duration) {
-	ackFn := func(payload []byte, timestamp time.Time) {
-		select {
-		case ackCh <- AckMessage{true, payload, timestamp}:
-		default:
-		}
-	}
-	nackFn := func() {
-		select {
-		case nackCh <- struct{}{}:
-		default:
-		}
-	}
-
-	ah := &AckHandler{ackFn, nackFn, nil}
-	m.AckLock.Lock()
-	m.AckHandlers[seqNo] = ah
-	m.AckLock.Unlock()
-
-	ah.timer = time.AfterFunc(timeout, func() {
-		m.AckLock.Lock()
-		delete(m.AckHandlers, seqNo)
-		m.AckLock.Unlock()
-		select {
-		case ackCh <- AckMessage{false, nil, time.Now()}:
-		default:
-		}
-	})
-}
-
-// SetAckHandler is used to attach a handler to be invoked when an ack with a
-// given sequence number is received. If a timeout is reached, the handler is
-// deleted. This is used for indirect pings so does not configure a function
-// for nacks.
-func (m *Members) SetAckHandler(seqNo uint32, ackFn func([]byte, time.Time), timeout time.Duration) {
-	// Add the handler
-	ah := &AckHandler{ackFn, nil, nil}
-	m.AckLock.Lock()
-	m.AckHandlers[seqNo] = ah
-	m.AckLock.Unlock()
-
-	// Setup a reaping routing
-	ah.timer = time.AfterFunc(timeout, func() {
-		m.AckLock.Lock()
-		delete(m.AckHandlers, seqNo)
-		m.AckLock.Unlock()
-	})
-}
-
-// Invokes an ack handler if any is associated, and reaps the handler immediately
-func (m *Members) InvokeAckHandler(ack AckResp, timestamp time.Time) {
-	m.AckLock.Lock()
-	ah, ok := m.AckHandlers[ack.SeqNo]
-	delete(m.AckHandlers, ack.SeqNo)
-	m.AckLock.Unlock()
-	if !ok {
-		return
-	}
-	ah.timer.Stop()
-	ah.ackFn(ack.Payload, timestamp)
-}
-
-// Invokes nack handler if any is associated.
-func (m *Members) InvokeNAckHandler(nack NAckResp) {
-	m.AckLock.Lock()
-	ah, ok := m.AckHandlers[nack.SeqNo]
-	m.AckLock.Unlock()
-	if !ok || ah.nackFn == nil {
-		return
-	}
-	ah.nackFn()
-}
-
-// 当收到传来的关于本节点被怀疑或死亡的信息时，会发送一个Alive gossip message。
-// 它将确保incarnation超过给定的 accusedInc 值，或者你可以提供 0 来获取下一个incarnation。
-// 这将改变传入的节点状态，所以必须在持有NodeLock情况下调用这个。
-func (m *Members) refute(me *NodeState, accusedInc uint32) {
-	inc := m.NextIncarnation()
-	if accusedInc >= inc {
-		inc = m.skipIncarnation(accusedInc - inc + 1)
-	}
-	me.Incarnation = inc
-
-	// 减少health，因为我们被要求反驳一个问题。
-	m.Awareness.ApplyDelta(1)
-
-	a := Alive{
-		Incarnation: inc,
-		Node:        me.Name,
-		Addr:        me.Addr,
-		Port:        me.Port,
-		Meta:        me.Meta,
-		Vsn: []uint8{
-			me.PMin, me.PMax, me.PCur,
-			me.DMin, me.DMax, me.DCur,
-		},
-	}
-	m.EncodeBroadcast(me.Addr.String(), AliveMsg, a)
 }

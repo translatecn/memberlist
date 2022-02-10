@@ -295,6 +295,7 @@ func TestMakeCompoundMessage(t *testing.T) {
 	}
 }
 
+// OK
 func TestDecodeCompoundMessage(t *testing.T) {
 	msg := &memberlist.Ping{SeqNo: 100}
 	buf, err := memberlist.Encode(memberlist.PingMsg, msg)
@@ -307,10 +308,10 @@ func TestDecodeCompoundMessage(t *testing.T) {
 
 	trunc, parts, err := memberlist.DecodeCompoundMessage(compound.Bytes()[1:])
 	if err != nil {
-		t.Fatalf("unexpected err: %s", err)
+		t.Fatalf("意外: %s", err)
 	}
 	if trunc != 0 {
-		t.Fatalf("should not truncate")
+		t.Fatalf("意外截断")
 	}
 	if len(parts) != 3 {
 		t.Fatalf("bad parts")

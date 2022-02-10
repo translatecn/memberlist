@@ -17,7 +17,6 @@ import (
 
 	multierror "github.com/hashicorp/go-multierror"
 	sockAddr "github.com/hashicorp/go-sockaddr"
-	"github.com/miekg/dns"
 )
 
 //memberlist是一个管理集群的库
@@ -47,12 +46,12 @@ type Members struct {
 	advertisePort uint16
 
 	Config         *Config
-	shutdown       int32 // 停止标志
+	Shutdown       int32 // 停止标志
 	ShutdownCh     chan struct{}
 	leave          int32
 	LeaveBroadcast chan struct{} // 离开广播
 
-	shutdownLock sync.Mutex
+	ShutdownLock sync.Mutex
 	leaveLock    sync.Mutex
 
 	Transport            NodeAwareTransport
@@ -80,169 +79,8 @@ type Members struct {
 	Logger *log.Logger
 }
 
-// Join is used to take an existing Members and attempt to join a cluster
-// by contacting all the given hosts and performing a state sync. Initially,
-// the Members only contains our own state, so doing this will cause
-// remote Nodes to become aware of the existence of this node, effectively
-// joining the cluster.
-//
-// This returns the number of hosts successfully contacted and an error if
-// none could be reached. If an error is returned, the node did not successfully
-// join the cluster.
-// 加入（Join）是用来获取一个现有的成员，并试图通过联系所有给定的主机和执行状态同步来加入一个集群。
-// 最初，成员只包含我们自己的状态，所以这样做将导致远程节点意识到这个节点的存在，有效地加入集群。
-// 这将返回成功联系到的主机的数量，如果没有联系到，则返回错误。如果返回错误，说明该节点没有成功加入集群。
-func (m *Members) Join(existing []string) (int, error) {
-	numSuccess := 0
-	var errs error
-	for _, exist := range existing {
-		Addrs, err := m.ResolveAddr(exist)
-		if err != nil {
-			err = fmt.Errorf("解析地址失败 %s: %v", exist, err)
-			errs = multierror.Append(errs, err)
-			m.Logger.Printf("[WARN] memberlist: %v", err)
-			continue
-		}
-
-		for _, Addr := range Addrs {
-			hp := pkg.JoinHostPort(Addr.IP.String(), Addr.Port)
-			a := Address{Addr: hp, Name: Addr.NodeName}
-			if err := m.PushPullNode(a, true); err != nil {
-				err = fmt.Errorf("加入失败 %s: %v", a.Addr, err)
-				errs = multierror.Append(errs, err)
-				m.Logger.Printf("[DEBUG] memberlist: %v", err)
-				continue
-			}
-			numSuccess++
-		}
-
-	}
-	if numSuccess > 0 {
-		errs = nil
-	}
-	return numSuccess, errs
-}
-
-// IpPort 希望加入的节点信息
-type IpPort struct {
-	IP       net.IP
-	Port     uint16
-	NodeName string // optional
-}
-
-// tcpLookupIP 是一个辅助工具，用于启动对指定主机的基于TCP的DNS查询。
-// 内置的Go解析器将首先进行UDP查询，只有在响应设置了truncate bit时才会使用TCP，这在像Consul的DNS服务器上并不常见。
-// 通过直接进行TCP查询，我们得到了最大的主机列表加入的最佳机会。由于加入是相对罕见的事件，所以做这个相当昂贵的操作是可以的。
-func (m *Members) tcpLookupIP(host string, defaultPort uint16, nodeName string) ([]IpPort, error) {
-	// Don't attempt any TCP lookups against non-fully qualified domain
-	// names, since those will likely come from the resolv.conf file.
-	if !strings.Contains(host, ".") {
-		return nil, nil
-	}
-
-	// Make sure the domain name is terminated with a dot (we know there's
-	// at least one character at this point).
-	dn := host
-	if dn[len(dn)-1] != '.' {
-		dn = dn + "."
-	}
-
-	// See if we can find a server to try.
-	cc, err := dns.ClientConfigFromFile(m.Config.DNSConfigPath)
-	if err != nil {
-		return nil, err
-	}
-	if len(cc.Servers) > 0 {
-		// We support host:Port in the DNS Config, but need to add the
-		// default Port if one is not supplied.
-		server := cc.Servers[0]
-		if !pkg.HasPort(server) {
-			server = net.JoinHostPort(server, cc.Port)
-		}
-
-		// Do the lookup.
-		c := new(dns.Client)
-		c.Net = "tcp"
-		msg := new(dns.Msg)
-		msg.SetQuestion(dn, dns.TypeANY)
-		in, _, err := c.Exchange(msg, server)
-		if err != nil {
-			return nil, err
-		}
-
-		// Handle any IPs we get back that we can attempt to join.
-		var ips []IpPort
-		for _, r := range in.Answer {
-			switch rr := r.(type) {
-			case *dns.A:
-				ips = append(ips, IpPort{IP: rr.A, Port: defaultPort, NodeName: nodeName})
-			case *dns.AAAA:
-				ips = append(ips, IpPort{IP: rr.AAAA, Port: defaultPort, NodeName: nodeName})
-			case *dns.CNAME:
-				m.Logger.Printf("[DEBUG] memberlist: Ignoring CNAME RR in TCP-first answer for '%s'", host)
-			}
-		}
-		return ips, nil
-	}
-
-	return nil, nil
-}
-
-// ResolveAddr is used to resolve the Address into an Address,
-// Port, and error. If no Port is given, use the default
-func (m *Members) ResolveAddr(hostStr string) ([]IpPort, error) {
-	// 首先去掉任何leading节点名称。这是可选的。
-	nodeName := ""
-	slashIdx := strings.Index(hostStr, "/") // 127.0.0.1:8000       -1
-	if slashIdx >= 0 {
-		if slashIdx == 0 {
-			return nil, fmt.Errorf("empty node name provided")
-		}
-		nodeName = hostStr[0:slashIdx]
-		hostStr = hostStr[slashIdx+1:]
-	}
-
-	// 这将捕获所提供的端口，或默认的端口。
-	hostStr = pkg.EnsurePort(hostStr, m.Config.BindPort) // 8000
-	host, sport, err := net.SplitHostPort(hostStr)
-	if err != nil {
-		return nil, err
-	}
-	lport, err := strconv.ParseUint(sport, 10, 16)
-	if err != nil {
-		return nil, err
-	}
-	port := uint16(lport)
-
-	if ip := net.ParseIP(host); ip != nil {
-		return []IpPort{
-			IpPort{IP: ip, Port: port, NodeName: nodeName},
-		}, nil
-	}
-	// 尝试使用tcp 解析
-	ips, err := m.tcpLookupIP(host, port, nodeName)
-	if err != nil {
-		m.Logger.Printf("[DEBUG] memberlist: TCP-first lookup 失败'%s', falling back to UDP: %s", hostStr, err)
-	}
-	if len(ips) > 0 {
-		return ips, nil
-	}
-
-	// 尝试使用udp 解析
-	ans, err := net.LookupIP(host)
-	if err != nil {
-		return nil, err
-	}
-	ips = make([]IpPort, 0, len(ans))
-	for _, ip := range ans {
-		ips = append(ips, IpPort{IP: ip, Port: port, NodeName: nodeName})
-	}
-	return ips, nil
-}
-
 // SetAlive 用于将此节点标记为活动节点。这就像我们自己的network channel收到一个Alive通知一样。
 func (m *Members) SetAlive() error {
-	//TODO 获取广播地址？会一直变么
 	Addr, port, err := m.RefreshAdvertise()
 	if err != nil {
 		return err
@@ -284,32 +122,6 @@ func (m *Members) SetAlive() error {
 	m.AliveNode(&a, nil, true) // 存储节点state,广播存活消息
 
 	return nil
-}
-
-//OK
-func (m *Members) getAdvertise() (net.IP, uint16) {
-	m.advertiseLock.RLock()
-	defer m.advertiseLock.RUnlock()
-	return m.advertiseAddr, m.advertisePort
-}
-
-// 设置广播地址
-func (m *Members) setAdvertise(Addr net.IP, port int) {
-	m.advertiseLock.Lock()
-	defer m.advertiseLock.Unlock()
-	m.advertiseAddr = Addr
-	m.advertisePort = uint16(port)
-}
-
-// RefreshAdvertise 刷新广播地址
-func (m *Members) RefreshAdvertise() (net.IP, int, error) {
-	Addr, port, err := m.Transport.FinalAdvertiseAddr(m.Config.AdvertiseAddr, m.Config.AdvertisePort) // "" 8000
-	fmt.Println("RefreshAdvertise [sockAddr.GetPrivateIP] ---->", Addr, port)
-	if err != nil {
-		return nil, 0, fmt.Errorf("获取地址失败: %v", err)
-	}
-	m.setAdvertise(Addr, port)
-	return Addr, port, nil
 }
 
 func (m *Members) SendToAddress(a Address, msg []byte) error {
@@ -376,7 +188,7 @@ func (m *Members) NumMembers() (Alive int) {
 	return
 }
 
-// Leave will broadcast a leave message but will not shutdown the background
+// Leave will broadcast a leave message but will not Shutdown the background
 // listeners, meaning the node will continue participating in gossip and state
 // updates.
 //
@@ -390,8 +202,8 @@ func (m *Members) Leave(timeout time.Duration) error {
 	m.leaveLock.Lock()
 	defer m.leaveLock.Unlock()
 
-	if m.hasShutdown() {
-		panic("leave after shutdown")
+	if m.hasSetShutdown() {
+		panic("在停止后离开")
 	}
 
 	if !m.hasLeft() {
@@ -416,7 +228,7 @@ func (m *Members) Leave(timeout time.Duration) error {
 		}
 		m.DeadNode(&d)
 
-		// 阻止直到广播出去
+		// 阻止直到广播出去、或者超时
 		if m.anyAlive() {
 			var timeoutCh <-chan time.Time
 			if timeout > 0 {
@@ -431,6 +243,31 @@ func (m *Members) Leave(timeout time.Duration) error {
 	}
 
 	return nil
+}
+
+// ------------------------------------------ OVER ------------------------------------------------------------
+
+func (m *Members) hasSetShutdown() bool {
+	return atomic.LoadInt32(&m.Shutdown) == 1
+}
+
+func (m *Members) hasLeft() bool {
+	return atomic.LoadInt32(&m.leave) == 1
+}
+
+// ProtocolVersion 返回当前的协议版本
+func (m *Members) ProtocolVersion() uint8 {
+	return m.Config.ProtocolVersion // 2
+}
+
+// EncryptionVersion 返回加密版本
+func (m *Members) EncryptionVersion() EncryptionVersion {
+	switch m.ProtocolVersion() { //2
+	case 1:
+		return 0
+	default:
+		return 1
+	}
 }
 
 // 检查是否有存活结点、非本机
@@ -450,34 +287,124 @@ func (m *Members) GetHealthScore() int {
 	return m.Awareness.GetHealthScore()
 }
 
-// ProtocolVersion 返回当前的协议版本
-func (m *Members) ProtocolVersion() uint8 {
-	return m.Config.ProtocolVersion // 2
-}
-
 // Shutdown 优雅的退出集群、发送Leave消息【幂等】
-func (m *Members) Shutdown() error {
-	m.shutdownLock.Lock()
-	defer m.shutdownLock.Unlock()
+func (m *Members) SetShutdown() error {
+	m.ShutdownLock.Lock()
+	defer m.ShutdownLock.Unlock()
 	// 之前为0
-	if m.hasShutdown() {
+	if m.hasSetShutdown() {
 		return nil
 	}
 	// 设置为1
-	if err := m.Transport.Shutdown(); err != nil {
+	if err := m.Transport.SetShutdown(); err != nil {
 		m.Logger.Printf("[错误] 停止Transport: %v", err)
 	}
 
-	atomic.StoreInt32(&m.shutdown, 1) // 设置为1 ;执行了两次
+	atomic.StoreInt32(&m.Shutdown, 1) // 设置为1 ;执行了两次
 	close(m.ShutdownCh)
 	m.deschedule() // 停止定时器
 	return nil
 }
 
-func (m *Members) hasShutdown() bool {
-	return atomic.LoadInt32(&m.shutdown) == 1
+//OK
+func (m *Members) getAdvertise() (net.IP, uint16) {
+	m.advertiseLock.RLock()
+	defer m.advertiseLock.RUnlock()
+	return m.advertiseAddr, m.advertisePort
 }
 
-func (m *Members) hasLeft() bool {
-	return atomic.LoadInt32(&m.leave) == 1
+// 设置广播地址
+func (m *Members) setAdvertise(Addr net.IP, port int) {
+	m.advertiseLock.Lock()
+	defer m.advertiseLock.Unlock()
+	m.advertiseAddr = Addr
+	m.advertisePort = uint16(port)
+}
+
+// RefreshAdvertise 刷新广播地址
+func (m *Members) RefreshAdvertise() (net.IP, int, error) {
+	Addr, port, err := m.Transport.FinalAdvertiseAddr(m.Config.AdvertiseAddr, m.Config.AdvertisePort) // "" 8000
+	fmt.Println("RefreshAdvertise [sockAddr.GetPrivateIP] ---->", Addr, port)
+	if err != nil {
+		return nil, 0, fmt.Errorf("获取地址失败: %v", err)
+	}
+	m.setAdvertise(Addr, port)
+	return Addr, port, nil
+}
+
+// ResolveAddr 解析hostStr、可以是域名 ,返回IpPort
+func (m *Members) ResolveAddr(hostStr string) ([]pkg.IpPort, error) {
+	// 首先去掉任何leading节点名称。这是可选的。
+	nodeName := ""
+	slashIdx := strings.Index(hostStr, "/") // 127.0.0.1:8000       -1
+	if slashIdx >= 0 {
+		if slashIdx == 0 {
+			return nil, fmt.Errorf("empty node name provided")
+		}
+		nodeName = hostStr[0:slashIdx]
+		hostStr = hostStr[slashIdx+1:]
+	}
+
+	// 这将捕获所提供的端口，或默认的端口。
+	hostStr = pkg.EnsurePort(hostStr, m.Config.BindPort) // 8000
+	host, sport, err := net.SplitHostPort(hostStr)
+	if err != nil {
+		return nil, err
+	}
+	lport, err := strconv.ParseUint(sport, 10, 16)
+	if err != nil {
+		return nil, err
+	}
+	port := uint16(lport)
+
+	if ip := net.ParseIP(host); ip != nil {
+		return []pkg.IpPort{
+			pkg.IpPort{IP: ip, Port: port, NodeName: nodeName},
+		}, nil
+	}
+	// 尝试使用tcp 解析
+	ips, err := pkg.TcpLookupIP(host, port, nodeName, m.Config.DNSConfigPath)
+	if err != nil {
+		m.Logger.Printf("[DEBUG] memberlist: TCP-first lookup 失败'%s', falling back to UDP: %s", hostStr, err)
+	}
+	if len(ips) > 0 {
+		return ips, nil
+	}
+
+	return pkg.UdpLookupIP(host, port, nodeName)
+
+}
+
+// Join  加入（Join）是用来获取一个现有的成员，并试图通过联系所有给定的主机和执行状态同步来加入一个集群。
+// 最初，成员只包含我们自己的状态，所以这样做将导致远程节点意识到这个节点的存在，有效地加入集群。
+// 这将返回成功联系到的主机的数量，如果没有联系到，则返回错误。如果返回错误，说明该节点没有成功加入集群。
+func (m *Members) Join(existing []string) (int, error) {
+	numSuccess := 0
+	var errs error
+	for _, exist := range existing {
+		Addrs, err := m.ResolveAddr(exist)
+		if err != nil {
+			err = fmt.Errorf("解析地址失败 %s: %v", exist, err)
+			errs = multierror.Append(errs, err)
+			m.Logger.Printf("[WARN] memberlist: %v", err)
+			continue
+		}
+
+		for _, Addr := range Addrs {
+			hp := pkg.JoinHostPort(Addr.IP.String(), Addr.Port)
+			a := Address{Addr: hp, Name: Addr.NodeName}
+			if err := m.PushPullNode(a, true); err != nil {
+				err = fmt.Errorf("加入失败 %s: %v", a.Addr, err)
+				errs = multierror.Append(errs, err)
+				m.Logger.Printf("[DEBUG] memberlist: %v", err)
+				continue
+			} // 建立tcp 链接
+			numSuccess++
+		}
+
+	}
+	if numSuccess > 0 {
+		errs = nil
+	}
+	return numSuccess, errs
 }

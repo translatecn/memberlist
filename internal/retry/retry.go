@@ -123,13 +123,13 @@ func run(r Retryer, t Failer, f func(r *R)) {
 		t.FailNow()
 	}
 	for r.NextOr(fail) {
-		var wg sync.WaitGroup
-		wg.Add(1)
+		var Wg sync.WaitGroup
+		Wg.Add(1)
 		go func() {
-			defer wg.Done()
+			defer Wg.Done()
 			f(rr)
 		}()
-		wg.Wait()
+		Wg.Wait()
 		if rr.fail {
 			rr.fail = false
 			continue

@@ -60,6 +60,7 @@ func mai3n() {
 
 func main() {
 	bt()
+	ns()
 }
 
 type A struct {
@@ -84,4 +85,10 @@ func bt() {
 	tq.ReplaceOrInsert(a)
 	fmt.Println(tq.Delete(a))
 	fmt.Println(tq.Len()) //TODO 还是5
+}
+func ns() {
+	res, _ := net.LookupIP("www.baidu.com")
+	for _, item := range res {
+		fmt.Println(item.String())
+	}
 }

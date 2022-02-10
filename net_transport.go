@@ -34,12 +34,12 @@ type NetTransportConfig struct {
 type NetTransport struct {
 	config       *NetTransportConfig
 	packetCh     chan *Packet
-	streamCh     chan net.Conn
-	logger       *log.Logger
-	wg           sync.WaitGroup
-	tcpListeners []*net.TCPListener
+	StreamCh     chan net.Conn
+	Logger       *log.Logger
+	Wg           sync.WaitGroup
+	TcpListeners []*net.TCPListener
 	UdpListeners []*net.UDPConn
-	shutdown     int32
+	Shutdown     int32
 }
 
 var _ NodeAwareTransport = (*NetTransport)(nil)
@@ -54,14 +54,14 @@ func NewNetTransport(config *NetTransportConfig) (*NetTransport, error) {
 	t := NetTransport{
 		config:   config,
 		packetCh: make(chan *Packet), // 阻塞
-		streamCh: make(chan net.Conn),
-		logger:   config.Logger,
+		StreamCh: make(chan net.Conn),
+		Logger:   config.Logger,
 	}
 
 	// 如果有错误、清理监听器
 	defer func() {
 		if !ok {
-			t.Shutdown()
+			t.SetShutdown()
 		}
 	}()
 
@@ -75,7 +75,7 @@ func NewNetTransport(config *NetTransportConfig) (*NetTransport, error) {
 		if err != nil {
 			return nil, fmt.Errorf("启动TCP listener失败 %q Port %d: %v", Addr, port, err)
 		}
-		t.tcpListeners = append(t.tcpListeners, tcpLn)
+		t.TcpListeners = append(t.TcpListeners, tcpLn)
 
 		// 如果给定的配置端口为零，则使用第一个TCP监听器来挑选一个可用的端口，然后将其应用于其他所有的端口。
 		if port == 0 {
@@ -95,9 +95,9 @@ func NewNetTransport(config *NetTransportConfig) (*NetTransport, error) {
 
 	// 现在我们已经能够创建它们了。
 	for i := 0; i < len(config.BindAddrs); i++ {
-		t.wg.Add(2)
+		t.Wg.Add(2)
 		// 开始接收请求
-		go t.tcpListen(t.tcpListeners[i])
+		go t.TcpListen(t.TcpListeners[i])
 		go t.UdpListen(t.UdpListeners[i])
 	}
 
@@ -107,7 +107,7 @@ func NewNetTransport(config *NetTransportConfig) (*NetTransport, error) {
 
 // GetAutoBindPort 返回一个随机端口
 func (t *NetTransport) GetAutoBindPort() int {
-	return t.tcpListeners[0].Addr().(*net.TCPAddr).Port
+	return t.TcpListeners[0].Addr().(*net.TCPAddr).Port
 }
 
 // FinalAdvertiseAddr 返回广播地址.
@@ -144,7 +144,7 @@ func (t *NetTransport) FinalAdvertiseAddr(ip string, port int) (net.IP, int, err
 			}
 		} else {
 			// 根据第一个TCP侦听器，使用我们绑定到的IP，我们已经确保它存在。
-			advertiseAddr = t.tcpListeners[0].Addr().(*net.TCPAddr).IP
+			advertiseAddr = t.TcpListeners[0].Addr().(*net.TCPAddr).IP
 		}
 
 		// 使用绑定的端口
@@ -222,48 +222,48 @@ func (t *NetTransport) DialAddressTimeout(a Address, timeout time.Duration) (net
 	return dialer.Dial("tcp", Addr)
 }
 
-// StreamCh 返回新建立的流连接
-func (t *NetTransport) StreamCh() <-chan net.Conn {
+// GetStreamCh 返回新建立的流连接
+func (t *NetTransport) GetStreamCh() <-chan net.Conn {
 	//net.go:912
-	return t.streamCh
+	return t.StreamCh
 }
 
 // See IngestionAwareTransport.
 func (t *NetTransport) IngestStream(conn net.Conn) error {
-	t.streamCh <- conn
+	t.StreamCh <- conn
 	return nil
 }
 
-// Shutdown    .
-func (t *NetTransport) Shutdown() error {
+// SetShutdown    .
+func (t *NetTransport) SetShutdown() error {
 	// 这将避免在我们关闭时出现关于错误的日志垃圾。
-	atomic.StoreInt32(&t.shutdown, 1)
+	atomic.StoreInt32(&t.Shutdown, 1)
 	// 对所有的连接，关闭它们。
-	for _, conn := range t.tcpListeners {
+	for _, conn := range t.TcpListeners {
 		conn.Close()
 	}
 	for _, conn := range t.UdpListeners {
 		conn.Close()
 	}
-	t.wg.Wait()
+	t.Wg.Wait()
 	return nil
 }
 
-// tcpListen 处理创建的TCP链接
-func (t *NetTransport) tcpListen(tcpLn *net.TCPListener) {
-	defer t.wg.Done()
+// TcpListen 处理创建的TCP链接
+func (t *NetTransport) TcpListen(tcpLn *net.TCPListener) {
+	defer t.Wg.Done()
 
 	//baseDelay是AcceptTCP()出错后，再次尝试的初始延迟。
 	const baseDelay = 5 * time.Millisecond
 
-	//maxDelay是AcceptTCP()出错后，再次尝试的最大延迟。在tcpListen()是错误循环的情况下，它将延迟关机检查。因此，对maxDelay的改变可能会对关机的延迟产生影响。
+	//maxDelay是AcceptTCP()出错后，再次尝试的最大延迟。在TcpListen()是错误循环的情况下，它将延迟关机检查。因此，对maxDelay的改变可能会对关机的延迟产生影响。
 	const maxDelay = 1 * time.Second
 
 	var loopDelay time.Duration
 	for {
 		conn, err := tcpLn.AcceptTCP()
 		if err != nil {
-			if s := atomic.LoadInt32(&t.shutdown); s == 1 {
+			if s := atomic.LoadInt32(&t.Shutdown); s == 1 {
 				break
 			}
 
@@ -277,36 +277,36 @@ func (t *NetTransport) tcpListen(tcpLn *net.TCPListener) {
 				loopDelay = maxDelay
 			}
 
-			t.logger.Printf("[错误] memberlist: 接收TCP链接失败: %v", err)
+			t.Logger.Printf("[错误] memberlist: 接收TCP链接失败: %v", err)
 			time.Sleep(loopDelay)
 			continue
 		}
 		// 没有错误，复位循环延迟
 		loopDelay = 0
 		//net.go:912
-		t.streamCh <- conn
+		t.StreamCh <- conn
 	}
 }
 
-// UdpListen 处理创建的UDP链接
+// UdpListen 处理创建的UDP链接,服务端
 func (t *NetTransport) UdpListen(udpLn *net.UDPConn) {
-	defer t.wg.Done()
+	defer t.Wg.Done()
 	for {
 		buf := make([]byte, udpPacketBufSize)
 		n, Addr, err := udpLn.ReadFrom(buf)
 		ts := time.Now()
 		if err != nil {
 			// 出错时，判断是不是正在停止
-			if s := atomic.LoadInt32(&t.shutdown); s == 1 {
+			if s := atomic.LoadInt32(&t.Shutdown); s == 1 {
 				break
 			}
 
-			t.logger.Printf("[错误] memberlist:读取udp包失败: %v", err)
+			t.Logger.Printf("[错误] memberlist:读取udp包失败: %v", err)
 			continue
 		}
 
 		if n < 1 {
-			t.logger.Printf("[错误] memberlist:UDP包太小(%d bytes) %s", len(buf), pkg.LogAddress(Addr))
+			t.Logger.Printf("[错误] memberlist:UDP包太小(%d bytes) %s", len(buf), pkg.LogAddress(Addr))
 			continue
 		}
 

@@ -26,7 +26,7 @@ func TestTransport_Join(t *testing.T) {
 	}
 	m1.SetAlive()
 	m1.Schedule()
-	defer m1.Shutdown()
+	defer m1.SetShutdown()
 
 	c2 := memberlist.DefaultLANConfig()
 	c2.Name = "node2"
@@ -37,7 +37,7 @@ func TestTransport_Join(t *testing.T) {
 	}
 	m2.SetAlive()
 	m2.Schedule()
-	defer m2.Shutdown()
+	defer m2.SetShutdown()
 
 	num, err := m2.Join([]string{c1.Name + "/" + t1.Addr.String()})
 	if num != 1 {
@@ -72,7 +72,7 @@ func TestTransport_Send(t *testing.T) {
 	}
 	m1.SetAlive()
 	m1.Schedule()
-	defer m1.Shutdown()
+	defer m1.SetShutdown()
 
 	c2 := memberlist.DefaultLANConfig()
 	c2.Name = "node2"
@@ -83,7 +83,7 @@ func TestTransport_Send(t *testing.T) {
 	}
 	m2.SetAlive()
 	m2.Schedule()
-	defer m2.Shutdown()
+	defer m2.SetShutdown()
 
 	num, err := m2.Join([]string{c1.Name + "/" + t1.Addr.String()})
 	if num != 1 {
@@ -149,12 +149,12 @@ func (tw testCountingWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-// TestTransport_TcpListenBackoff tests that AcceptTCP() errors in NetTransport#tcpListen()
+// TestTransport_TcpListenBackoff tests that AcceptTCP() errors in NetTransport#TcpListen()
 // do not result in a tight loop and spam the log. We verify this here by counting the number
 // of entries logged in a given time period.
 func TestTransport_TcpListenBackoff(t *testing.T) {
 
-	// testTime is the amount of time we will allow NetTransport#tcpListen() to run
+	// testTime is the amount of time we will allow NetTransport#TcpListen() to run
 	// This needs to be long enough that to verify that maxDelay is in force,
 	// but not so long as to be obnoxious when running the test suite.
 	const testTime = 4 * time.Second
@@ -163,31 +163,31 @@ func TestTransport_TcpListenBackoff(t *testing.T) {
 	countingWriter := testCountingWriter{t, &numCalls}
 	countingLogger := log.New(countingWriter, "test", log.LstdFlags)
 	Transport := memberlist.NetTransport{
-		streamCh: make(chan net.Conn),
-		logger:   countingLogger,
+		StreamCh: make(chan net.Conn),
+		Logger:   countingLogger,
 	}
-	Transport.wg.Add(1)
+	Transport.Wg.Add(1)
 
 	// create a listener that will cause AcceptTCP calls to fail
 	listener, _ := net.ListenTCP("tcp", nil)
 	listener.Close()
-	go Transport.tcpListen(listener)
+	go Transport.TcpListen(listener)
 
 	// sleep (+yield) for testTime seconds before asking the accept loop to shut down
 	time.Sleep(testTime)
-	atomic.StoreInt32(&Transport.shutdown, 1)
+	atomic.StoreInt32(&Transport.Shutdown, 1)
 
-	// Verify that the wg was completed on exit (but without blocking this test)
+	// Verify that the Wg was completed on exit (but without blocking this test)
 	// maxDelay == 1s, so we will give the routine 1.25s to loop around and shut down.
 	c := make(chan struct{})
 	go func() {
 		defer close(c)
-		Transport.wg.Wait()
+		Transport.Wg.Wait()
 	}()
 	select {
 	case <-c:
 	case <-time.After(1250 * time.Millisecond):
-		t.Error("timed out waiting for Transport waitgroup to be done after flagging shutdown")
+		t.Error("timed out waiting for Transport waitgroup to be done after flagging Shutdown")
 	}
 
 	// In testTime==4s, we expect to loop approximately 12 times (and log approximately 11 errors),
@@ -196,11 +196,11 @@ func TestTransport_TcpListenBackoff(t *testing.T) {
 	// Too few calls suggests that the minDelay is not in force; too many calls suggests that the
 	// maxDelay is not in force or that the back-off isn't working at all.
 	// We'll leave a little flex; the important thing here is the asymptotic behavior.
-	// If the minDelay or maxDelay in NetTransport#tcpListen() are modified, this test may fail
+	// If the minDelay or maxDelay in NetTransport#TcpListen() are modified, this test may fail
 	// and need to be adjusted.
 	require.True(t, numCalls > 8)
 	require.True(t, numCalls < 14)
 
 	// no connections should have been accepted and sent to the channel
-	require.Equal(t, len(Transport.streamCh), 0)
+	require.Equal(t, len(Transport.StreamCh), 0)
 }
