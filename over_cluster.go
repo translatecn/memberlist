@@ -3,8 +3,8 @@ package memberlist
 import (
 	"container/list"
 	"fmt"
-	"github.com/hashicorp/memberlist/pkg"
 	"github.com/hashicorp/memberlist/broadcast_tree"
+	"github.com/hashicorp/memberlist/pkg"
 	"log"
 	"os"
 	"strings"

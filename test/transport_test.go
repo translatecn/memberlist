@@ -111,13 +111,13 @@ func TestTransport_Send(t *testing.T) {
 	if err := m2.SendToUDP(n1, []byte("SendToUDP")); err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	if err := m2.SendToTCP(n1, []byte("SendToTCP")); err != nil {
+	if err := m2.SendUserMsg(n1.FullAddress(), []byte("SendToTCP")); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 	if err := m2.SendBestEffort(n1, []byte("SendBestEffort")); err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	if err := m2.SendReliable(n1, []byte("SendReliable")); err != nil {
+	if err := m2.SendUserMsg(n1.FullAddress(), []byte("SendReliable")); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 	time.Sleep(100 * time.Millisecond)

@@ -79,9 +79,7 @@ func EncryptedLength(vsn EncryptionVersion, inp int) int {
 	return versionSize + nonceSize + inp + padding + tagSize
 }
 
-// EncryptPayload is used to encrypt a message with a given key.
-// We make use of AES-128 in GCM mode. New byte buffer is the version,
-// nonce, ciphertext and tag
+// EncryptPayload 是用来用一个给定的密钥对信息进行加密的。我们在GCM模式下使用AES-128。新的字节缓冲区是版本、nonce、密码文本和标签
 func EncryptPayload(vsn EncryptionVersion, key []byte, msg []byte, data []byte, dst *bytes.Buffer) error {
 	// Get the AES block cipher
 	aesBlock, err := aes.NewCipher(key)

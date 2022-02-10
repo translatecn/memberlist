@@ -129,7 +129,6 @@ func (m *MockDelegate) NotifyMsg(msg []byte) {
 func (m *MockDelegate) GetBroadcasts(overhead, limit int) [][]byte {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
 	b := m.Broadcasts
 	m.Broadcasts = nil
 	return b

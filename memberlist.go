@@ -124,49 +124,6 @@ func (m *Members) SetAlive() error {
 	return nil
 }
 
-func (m *Members) SendToAddress(a Address, msg []byte) error {
-	// Encode as a user message
-	buf := make([]byte, 1, len(msg)+1)
-	buf[0] = byte(UserMsg)
-	buf = append(buf, msg...)
-
-	// Send the message
-	return m.RawSendMsgPacket(a, nil, buf)
-}
-
-// Deprecated: SendToUDP is deprecated in favor of SendBestEffort.
-func (m *Members) SendToUDP(to *Node, msg []byte) error {
-	return m.SendBestEffort(to, msg)
-}
-
-// Deprecated: SendToTCP is deprecated in favor of SendReliable.
-func (m *Members) SendToTCP(to *Node, msg []byte) error {
-	return m.SendReliable(to, msg)
-}
-
-// SendBestEffort uses the unreliable packet-oriented interface of the Transport
-// to target a user message at the given node (this does not use the gossip
-// mechanism). The maximum size of the message depends on the configured
-// UDPBufferSize for this memberlist instance.
-func (m *Members) SendBestEffort(to *Node, msg []byte) error {
-	// Encode as a user message
-	buf := make([]byte, 1, len(msg)+1)
-	buf[0] = byte(UserMsg)
-	buf = append(buf, msg...)
-
-	// Send the message
-	a := Address{Addr: to.Address(), Name: to.Name}
-	return m.RawSendMsgPacket(a, to, buf)
-}
-
-// SendReliable uses the reliable stream-oriented interface of the Transport to
-// target a user message at the given node (this does not use the gossip
-// mechanism). Delivery is guaranteed if no error is returned, and there is no
-// limit on the size of the message.
-func (m *Members) SendReliable(to *Node, msg []byte) error {
-	return m.sendUserMsg(to.FullAddress(), msg)
-}
-
 // Deprecated: SendTo is deprecated in favor of SendBestEffort, which requires a node to
 // target. If you don't have a node then use SendToAddress.
 func (m *Members) SendTo(to net.Addr, msg []byte) error {
@@ -287,7 +244,7 @@ func (m *Members) GetHealthScore() int {
 	return m.Awareness.GetHealthScore()
 }
 
-// Shutdown 优雅的退出集群、发送Leave消息【幂等】
+// SetShutdown 优雅的退出集群、发送Leave消息【幂等】
 func (m *Members) SetShutdown() error {
 	m.ShutdownLock.Lock()
 	defer m.ShutdownLock.Unlock()
@@ -407,4 +364,27 @@ func (m *Members) Join(existing []string) (int, error) {
 		errs = nil
 	}
 	return numSuccess, errs
+}
+
+// SendToAddress UDP发送UserMsg
+func (m *Members) SendToAddress(a Address, msg []byte) error {
+	buf := make([]byte, 1, len(msg)+1)
+	buf[0] = byte(UserMsg)
+	buf = append(buf, msg...)
+	return m.RawSendMsgPacket(a, nil, buf)
+}
+
+// SendBestEffort UDP发送UserMsg
+func (m *Members) SendBestEffort(to *Node, msg []byte) error {
+	buf := make([]byte, 1, len(msg)+1)
+	buf[0] = byte(UserMsg)
+	buf = append(buf, msg...)
+
+	a := Address{Addr: to.Address(), Name: to.Name}
+	return m.RawSendMsgPacket(a, to, buf)
+}
+
+// SendToUDP UDP发送UserMsg
+func (m *Members) SendToUDP(to *Node, msg []byte) error {
+	return m.SendBestEffort(to, msg)
 }

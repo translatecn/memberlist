@@ -235,7 +235,6 @@ func (m *Members) ProbeNodeByAddr(Addr string) {
 	m.NodeLock.RLock()
 	n := m.NodeMap[Addr]
 	m.NodeLock.RUnlock()
-
 	m.ProbeNode(n)
 }
 

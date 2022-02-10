@@ -1,6 +1,7 @@
 package memberlist
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"github.com/hashicorp/go-msgpack/codec"
@@ -352,4 +353,52 @@ func (m *Members) sendLocalState(conn net.Conn, join bool, streamLabel string) e
 	}
 
 	return m.RawSendMsgStream(conn, bufConn.Bytes(), streamLabel) // m.Config.Label
+}
+
+// ReadStream 解密、解压缩消息
+func (m *Members) ReadStream(conn net.Conn, streamLabel string) (MessageType, io.Reader, *codec.Decoder, error) {
+	var bufConn io.Reader = bufio.NewReader(conn)
+
+	// 消息类型     EncryptMsg
+	buf := [1]byte{0}
+	if _, err := io.ReadFull(bufConn, buf[:]); err != nil {
+		return 0, nil, nil, err
+	}
+	msgType := MessageType(buf[0]) // EncryptMsg
+
+	if msgType == EncryptMsg {
+		if !m.Config.EncryptionEnabled() {
+			return 0, nil, nil, fmt.Errorf("远端状态是加密的，但本机加密信息没有配置")
+		}
+
+		plain, err := m.DecryptRemoteState(bufConn, streamLabel)
+		if err != nil {
+			return 0, nil, nil, err
+		}
+
+		msgType = MessageType(plain[0])
+		bufConn = bytes.NewReader(plain[1:])
+	} else if m.Config.EncryptionEnabled() && m.Config.GossipVerifyIncoming {
+		return 0, nil, nil, fmt.Errorf("加密信息已配置,但远程的state没有加密")
+	}
+
+	hd := codec.MsgpackHandle{}
+	dec := codec.NewDecoder(bufConn, &hd)
+
+	if msgType == CompressMsg {
+		var c Compress
+		if err := dec.Decode(&c); err != nil {
+			return 0, nil, nil, err
+		}
+		decomp, err := DeCompressBuffer(&c)
+		if err != nil {
+			return 0, nil, nil, err
+		}
+
+		msgType = MessageType(decomp[0])
+		bufConn = bytes.NewReader(decomp[1:])
+		dec = codec.NewDecoder(bufConn, &hd)
+	}
+
+	return msgType, bufConn, dec, nil
 }

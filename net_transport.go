@@ -167,12 +167,7 @@ func (t *NetTransport) WriteToAddress(b []byte, a Address) (time.Time, error) {
 	if err != nil {
 		return time.Time{}, err
 	}
-
-	// We made sure there's at least one UDP listener, so just use the
-	// packet sending interface on the first one. Take the time after the
-	// write call comes back, which will underestimate the time a little,
-	// but help account for any delays before the write occurs.
-	_, err = t.UdpListeners[0].WriteTo(b, udpAddr)
+	_, err = t.UdpListeners[0].WriteTo(b, udpAddr)// 使用第一个网卡发送
 	return time.Now(), err
 }
 

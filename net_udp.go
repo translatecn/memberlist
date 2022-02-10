@@ -92,25 +92,25 @@ func (m *Members) HandleCommand(buf []byte, from net.Addr, timestamp time.Time) 
 	buf = buf[1:]
 
 	switch msgType {
-	case CompoundMsg: // 组合消息
+	case CompoundMsg: // ✅组合消息
 		m.handleCompound(buf, from, timestamp)
-	case CompressMsg: // 压缩消息
+	case CompressMsg: // ✅ 压缩消息
 		m.handleCompressed(buf, from, timestamp)
-	case PingMsg: // 接收到PING
+	case PingMsg: // 接收到PING  ✅
 		m.handlePing(buf, from)
 	case IndirectPingMsg:
 		m.handleIndirectPing(buf, from)
-	case AckRespMsg: // Ping确认消息
+	case AckRespMsg: // ✅ Ping确认消息
 		m.handleAck(buf, from, timestamp)
 	case NAckRespMsg:
 		m.handleNack(buf, from)
-	case SuspectMsg: // 质疑消息
+	case SuspectMsg: // ✅ 质疑消息
 		fallthrough
-	case AliveMsg: // 存活消息
+	case AliveMsg: // ✅ 存活消息
 		fallthrough
-	case DeadMsg: // 死亡消息
+	case DeadMsg: // ✅ 死亡消息
 		fallthrough
-	case UserMsg: // 用户消息
+	case UserMsg: // ✅ 用户消息
 		// 优先Alive
 		queue := m.LowPriorityMsgQueue
 		if msgType == AliveMsg {

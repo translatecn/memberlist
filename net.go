@@ -1,7 +1,6 @@
 package memberlist
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/binary"
 	"fmt"
@@ -210,27 +209,6 @@ type msgHandoff struct {
 	from    net.Addr
 }
 
-// ensureCanConnect 确保IP能够链接
-func (m *Members) ensureCanConnect(from net.Addr) error {
-	if !m.Config.IPMustBeChecked() {
-		return nil
-	}
-	source := from.String()
-	if source == "pipe" {
-		return nil
-	}
-	host, _, err := net.SplitHostPort(source)
-	if err != nil {
-		return err
-	}
-
-	ip := net.ParseIP(host)
-	if ip == nil {
-		return fmt.Errorf("不能解析IP %s", host)
-	}
-	return m.Config.IPAllowed(ip)
-}
-
 // encodeAndSendMsg 编码并发送消息
 func (m *Members) encodeAndSendMsg(a Address, msgType MessageType, msg interface{}) error {
 	out, err := Encode(msgType, msg)
@@ -272,190 +250,13 @@ func (m *Members) sendMsg(a Address, msg []byte) error {
 	return m.RawSendMsgPacket(a, nil, compound.Bytes())
 }
 
-// RawSendMsgPacket is used to send message via packet to another host without
-// modification, other than Compression or encryption if enabled.
-func (m *Members) RawSendMsgPacket(a Address, node *Node, msg []byte) error {
-	if a.Name == "" && m.Config.RequireNodeNames {
-		return errNodeNamesAreRequired
-	}
-
-	// Check if we have Compression enabled
-	if m.Config.EnableCompression {
-		buf, err := CompressPayload(msg)
-		if err != nil {
-			m.Logger.Printf("[WARN] memberlist: Failed to Compress payload: %v", err)
-		} else {
-			// 只有在压缩变小后，才使用压缩
-			if buf.Len() < len(msg) {
-				msg = buf.Bytes()
-			}
-		}
-	}
-
-	// Try to look up the destination node. Note this will only work if the
-	// bare IP Address is used as the node name, which is not guaranteed.
-	if node == nil {
-		toAddr, _, err := net.SplitHostPort(a.Addr)
-		if err != nil {
-			m.Logger.Printf("[错误] memberlist: Failed to parse Address %q: %v", a.Addr, err)
-			return err
-		}
-		m.NodeLock.RLock()
-		nodeState, ok := m.NodeMap[toAddr]
-		m.NodeLock.RUnlock()
-		if ok {
-			node = &nodeState.Node
-		}
-	}
-
-	// Add a CRC to the end of the payload if the recipient understands
-	// ProtocolVersion >= 5
-	if node != nil && node.PMax >= 5 {
-		crc := crc32.ChecksumIEEE(msg)
-		header := make([]byte, 5, 5+len(msg))
-		header[0] = byte(HasCrcMsg)
-		binary.BigEndian.PutUint32(header[1:], crc)
-		msg = append(header, msg...)
-	}
-
-	// Check if we have encryption enabled
-	if m.Config.EncryptionEnabled() && m.Config.GossipVerifyOutgoing {
-		// Encrypt the payload
-		var (
-			primaryKey  = m.Config.Keyring.GetPrimaryKey()
-			packetLabel = []byte(m.Config.Label)
-			buf         bytes.Buffer
-		)
-		err := EncryptPayload(m.EncryptionVersion(), primaryKey, msg, packetLabel, &buf)
-		if err != nil {
-			m.Logger.Printf("[错误] memberlist: Encryption of message failed: %v", err)
-			return err
-		}
-		msg = buf.Bytes()
-	}
-
-	_, err := m.Transport.WriteToAddress(msg, a)
-	return err
-}
-
-// RawSendMsgStream 是用来将一个信息流传到另一个主机上，不作任何修改
-func (m *Members) RawSendMsgStream(conn net.Conn, sendBuf []byte, streamLabel string) error {
-	// 是否允许压缩
-	if m.Config.EnableCompression {
-		compBuf, err := CompressPayload(sendBuf)
-		if err != nil {
-			m.Logger.Printf("[ERROR] memberlist: 压缩失败: %v", err)
-		} else {
-			sendBuf = compBuf.Bytes()
-		}
-	}
-
-	// 是否允许加密
-	if m.Config.EncryptionEnabled() && m.Config.GossipVerifyOutgoing {
-		crypt, err := m.EncryptLocalState(sendBuf, streamLabel)
-		if err != nil {
-			m.Logger.Printf("[ERROR] memberlist: 加密失败: %v", err)
-			return err
-		}
-		sendBuf = crypt
-	}
-
-	if n, err := conn.Write(sendBuf); err != nil {
-		return err
-	} else if n != len(sendBuf) {
-		return fmt.Errorf("only %d of %d bytes written", n, len(sendBuf))
-	}
-
-	return nil
-}
-
-// sendUserMsg 是用来将用户信息流转到另一个主机。
-func (m *Members) sendUserMsg(a Address, sendBuf []byte) error {
-	if a.Name == "" && m.Config.RequireNodeNames {
-		return errNodeNamesAreRequired
-	}
-
-	conn, err := m.Transport.DialAddressTimeout(a, m.Config.TCPTimeout)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	bufConn := bytes.NewBuffer(nil)
-	if err := bufConn.WriteByte(byte(UserMsg)); err != nil {
-		return err
-	}
-
-	header := UserMsgHeader{UserMsgLen: len(sendBuf)}
-	hd := codec.MsgpackHandle{}
-	enc := codec.NewEncoder(bufConn, &hd)
-	if err := enc.Encode(&header); err != nil {
-		return err
-	}
-	if _, err := bufConn.Write(sendBuf); err != nil {
-		return err
-	}
-
-	return m.RawSendMsgStream(conn, bufConn.Bytes(), m.Config.Label)
-}
-
-// ReadStream 解密、解压缩消息
-func (m *Members) ReadStream(conn net.Conn, streamLabel string) (MessageType, io.Reader, *codec.Decoder, error) {
-	var bufConn io.Reader = bufio.NewReader(conn)
-
-	// 消息类型     EncryptMsg
-	buf := [1]byte{0}
-	if _, err := io.ReadFull(bufConn, buf[:]); err != nil {
-		return 0, nil, nil, err
-	}
-	msgType := MessageType(buf[0]) // EncryptMsg
-
-	if msgType == EncryptMsg {
-		if !m.Config.EncryptionEnabled() {
-			return 0, nil, nil, fmt.Errorf("远端状态是加密的，但本机加密信息没有配置")
-		}
-
-		plain, err := m.DecryptRemoteState(bufConn, streamLabel)
-		if err != nil {
-			return 0, nil, nil, err
-		}
-
-		msgType = MessageType(plain[0])
-		bufConn = bytes.NewReader(plain[1:])
-	} else if m.Config.EncryptionEnabled() && m.Config.GossipVerifyIncoming {
-		return 0, nil, nil, fmt.Errorf("加密信息已配置,但远程的state没有加密")
-	}
-
-	hd := codec.MsgpackHandle{}
-	dec := codec.NewDecoder(bufConn, &hd)
-
-	if msgType == CompressMsg {
-		var c Compress
-		if err := dec.Decode(&c); err != nil {
-			return 0, nil, nil, err
-		}
-		decomp, err := DeCompressBuffer(&c)
-		if err != nil {
-			return 0, nil, nil, err
-		}
-
-		msgType = MessageType(decomp[0])
-		bufConn = bytes.NewReader(decomp[1:])
-		dec = codec.NewDecoder(bufConn, &hd)
-	}
-
-	return msgType, bufConn, dec, nil
-}
-
-// readUserMsg is used to Decode a UserMsg from a stream.
+// readUserMsg 从TCP流中解码UserMsg
 func (m *Members) readUserMsg(bufConn io.Reader, dec *codec.Decoder) error {
-	// Read the user message header
 	var header UserMsgHeader
 	if err := dec.Decode(&header); err != nil {
 		return err
 	}
 
-	// Read the user message into a buffer
 	var userBuf []byte
 	if header.UserMsgLen > 0 {
 		userBuf = make([]byte, header.UserMsgLen)
@@ -529,6 +330,129 @@ func (m *Members) SendPingAndWaitForAck(a Address, ping Ping, Deadline time.Time
 }
 
 // ------------------------------------------ OVER ---------------------------------------
+
+// SendUserMsg 是用来将用户信息流转到另一个主机。
+func (m *Members) SendUserMsg(a Address, sendBuf []byte) error {
+	if a.Name == "" && m.Config.RequireNodeNames {
+		return errNodeNamesAreRequired
+	}
+
+	conn, err := m.Transport.DialAddressTimeout(a, m.Config.TCPTimeout)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	bufConn := bytes.NewBuffer(nil)
+	if err := bufConn.WriteByte(byte(UserMsg)); err != nil {
+		return err
+	}
+
+	header := UserMsgHeader{UserMsgLen: len(sendBuf)}
+	hd := codec.MsgpackHandle{}
+	enc := codec.NewEncoder(bufConn, &hd)
+	if err := enc.Encode(&header); err != nil {
+		return err
+	}
+	if _, err := bufConn.Write(sendBuf); err != nil {
+		return err
+	}
+
+	return m.RawSendMsgStream(conn, bufConn.Bytes(), m.Config.Label)
+}
+
+// RawSendMsgPacket UDP 是用来将一个信息流传到另一个主机上，不作任何修改
+func (m *Members) RawSendMsgPacket(a Address, node *Node, msg []byte) error {
+	//压缩+CRC+加密
+	if a.Name == "" && m.Config.RequireNodeNames {
+		return errNodeNamesAreRequired
+	}
+
+	// 是否允许压缩
+	if m.Config.EnableCompression {
+		buf, err := CompressPayload(msg)
+		if err != nil {
+			m.Logger.Printf("[WARN] memberlist: 压缩失败: %v", err)
+		} else {
+			// 只有在压缩变小后，才使用压缩
+			if buf.Len() < len(msg) {
+				msg = buf.Bytes()
+			}
+		}
+	}
+
+	// 尝试查找目标节点。注意这只有在裸露的IP地址被用作节点名称的情况下才会起作用，而这并不保证。
+	if node == nil {
+		toAddr, _, err := net.SplitHostPort(a.Addr)
+		if err != nil {
+			m.Logger.Printf("[错误] memberlist: 解析地址失败%q: %v", a.Addr, err)
+			return err
+		}
+		m.NodeLock.RLock()
+		nodeState, ok := m.NodeMap[toAddr]
+		m.NodeLock.RUnlock()
+		if ok {
+			node = &nodeState.Node
+		}
+	}
+
+	// 添加CRC校验
+	if node != nil && node.PMax >= 5 {
+		crc := crc32.ChecksumIEEE(msg)
+		header := make([]byte, 5, 5+len(msg))
+		header[0] = byte(HasCrcMsg)
+		binary.BigEndian.PutUint32(header[1:], crc)
+		msg = append(header, msg...)
+	}
+
+	if m.Config.EncryptionEnabled() && m.Config.GossipVerifyOutgoing {
+		var (
+			primaryKey  = m.Config.Keyring.GetPrimaryKey()
+			packetLabel = []byte(m.Config.Label)
+			buf         bytes.Buffer
+		)
+		err := EncryptPayload(m.EncryptionVersion(), primaryKey, msg, packetLabel, &buf)
+		if err != nil {
+			m.Logger.Printf("[错误] memberlist: 加密消息失败: %v", err)
+			return err
+		}
+		msg = buf.Bytes()
+	}
+
+	_, err := m.Transport.WriteToAddress(msg, a)
+	return err
+}
+
+// RawSendMsgStream TCP 是用来将一个信息流传到另一个主机上，不作任何修改
+func (m *Members) RawSendMsgStream(conn net.Conn, sendBuf []byte, streamLabel string) error {
+	// 是否允许压缩
+	if m.Config.EnableCompression {
+		compBuf, err := CompressPayload(sendBuf)
+		if err != nil {
+			m.Logger.Printf("[ERROR] memberlist: 压缩失败: %v", err)
+		} else {
+			sendBuf = compBuf.Bytes()
+		}
+	}
+
+	// 是否允许加密
+	if m.Config.EncryptionEnabled() && m.Config.GossipVerifyOutgoing {
+		crypt, err := m.EncryptLocalState(sendBuf, streamLabel)
+		if err != nil {
+			m.Logger.Printf("[ERROR] memberlist: 加密失败: %v", err)
+			return err
+		}
+		sendBuf = crypt
+	}
+
+	if n, err := conn.Write(sendBuf); err != nil {
+		return err
+	} else if n != len(sendBuf) {
+		return fmt.Errorf("only %d of %d bytes written", n, len(sendBuf))
+	}
+
+	return nil
+}
 
 // EncryptLocalState 在发送前 加密数据
 func (m *Members) EncryptLocalState(sendBuf []byte, streamLabel string) ([]byte, error) {
@@ -611,4 +535,25 @@ func (m *Members) getNextMessage() (msgHandoff, bool) {
 		return msg, true
 	}
 	return msgHandoff{}, false
+}
+
+// ensureCanConnect 确保IP能够链接
+func (m *Members) ensureCanConnect(from net.Addr) error {
+	if !m.Config.IPMustBeChecked() {
+		return nil
+	}
+	source := from.String()
+	if source == "pipe" {
+		return nil
+	}
+	host, _, err := net.SplitHostPort(source)
+	if err != nil {
+		return err
+	}
+
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return fmt.Errorf("不能解析IP %s", host)
+	}
+	return m.Config.IPAllowed(ip)
 }

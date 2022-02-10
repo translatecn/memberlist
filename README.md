@@ -129,7 +129,7 @@ tq.Descend  按照将序遍历
 c:
     AliveNode                           |<--   Gossip()      定时广播到随机的机器
     DeadNode          ------> Btree  ---|      在主动发包到某个节点的过程中，填充额外的信息
-    EncodeBroadcast                     |<--   encodeAndSendMsg  <--  Ping  
+    EncodeBroadcast                     |<--   encodeAndSendMsg  <--  Ping 、Gossip、ProbeNode、Probe 、ProbeNodeByAddr
     Refute
 
 s:
@@ -142,7 +142,7 @@ s:
             HandleCommand
                 handlePing
                 handleIndirectPing
-                ProbeNode
+                
     
     ↑---->  返回耗时、错误
 a (Ping)--->1、PingMsg---> b(handlePing)
@@ -165,7 +165,27 @@ Gossip
 	// 2 --> c
 	// 3 --> d
     
-    
+
+Join是建立的TCP链接
+
+
+以AliveMsg为例
+当某节点Create以后,就调用了 AliveNode ,将alive消息放入到了Btree等待广播
+加入集群
+等待Gossip超时,将信息，随机发往某个节点
+
+也就是某个节点的alive信息会一直在集群中传输,最早将这个信息放进来的是这个节点本身
+
+
+
+UserMsg:
+c:
+    SendUserMsg
+    SendReliable
+    SendToAddress
+    SendBestEffort
+    SendToUDP
+    以及配置了 m.Config.Delegate.GetBroadcasts   任何一个可以广播的行为
     
     
 ```
