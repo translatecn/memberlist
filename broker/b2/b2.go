@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"github.com/hashicorp/memberlist"
+	"net"
+	"strconv"
 	"time"
 )
 
@@ -26,5 +28,13 @@ func main() {
 	for _, member := range m.Members() {
 		fmt.Printf("Member: %s %s\n", member.Name, member.Addr)
 	}
+	go func() {
+		for {
+			Addr, _ := net.ResolveUDPAddr("udp", net.JoinHostPort(net.IPv4(127, 0, 0, 1).String(), strconv.Itoa(port)))
+			timeCost, err := m.Ping(m.Config.Name, Addr)
+			fmt.Println("===>", timeCost, err)
+			time.Sleep(time.Second)
+		}
+	}()
 	time.Sleep(time.Second * 1000)
 }

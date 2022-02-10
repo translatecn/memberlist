@@ -92,50 +92,58 @@ func (m *Members) HandleCommand(buf []byte, from net.Addr, timestamp time.Time) 
 	buf = buf[1:]
 
 	switch msgType {
-	case CompoundMsg:
+	case CompoundMsg: // 组合消息
 		m.handleCompound(buf, from, timestamp)
 	case CompressMsg: // 压缩消息
 		m.handleCompressed(buf, from, timestamp)
-	case PingMsg:
+	case PingMsg: // 接收到PING
 		m.handlePing(buf, from)
 	case IndirectPingMsg:
 		m.handleIndirectPing(buf, from)
-	case AckRespMsg:
+	case AckRespMsg: // Ping确认消息
 		m.handleAck(buf, from, timestamp)
 	case NAckRespMsg:
 		m.handleNack(buf, from)
-
-	case SuspectMsg:
+	case SuspectMsg: // 质疑消息
 		fallthrough
-	case AliveMsg:
+	case AliveMsg: // 存活消息
 		fallthrough
-	case DeadMsg:
+	case DeadMsg: // 死亡消息
 		fallthrough
-	case UserMsg:
-		// Determine the message queue_broadcast, prioritize Alive
+	case UserMsg: // 用户消息
+		// 优先Alive
 		queue := m.LowPriorityMsgQueue
 		if msgType == AliveMsg {
 			queue = m.HighPriorityMsgQueue
 		}
 
-		// Check for overflow and append if not full
+		// 检查是否有溢出，如果没有满，则进行追加。
 		m.msgQueueLock.Lock()
 		if queue.Len() >= m.Config.HandoffQueueDepth {
-			m.Logger.Printf("[WARN] memberlist: handler queue_broadcast full, dropping message (%d) %s", msgType, pkg.LogAddress(from))
+			m.Logger.Printf("[WARN] memberlist: 队列溢出 (%d) %s", msgType, pkg.LogAddress(from))
 		} else {
-			queue.PushBack(msgHandoff{msgType, buf, from})
+			queue.PushBack(msgHandoff{msgType, buf, from}) // 移交消息
 		}
 		m.msgQueueLock.Unlock()
 
-		// Notify of pending message
+		// 通知有待处理的信息
 		select {
 		case m.HandoffCh <- struct{}{}:
 		default:
 		}
 
 	default:
-		m.Logger.Printf("[错误] memberlist: msg type (%d) not supported %s", msgType, pkg.LogAddress(from))
+		m.Logger.Printf("[错误] memberlist: 消息类型不支持 (%d) %s", msgType, pkg.LogAddress(from))
 	}
+}
+
+func (m *Members) handleNack(buf []byte, from net.Addr) {
+	var nack NAckResp
+	if err := Decode(buf, &nack); err != nil {
+		m.Logger.Printf("[错误] memberlist: Failed to Decode nack response: %s %s", err, pkg.LogAddress(from))
+		return
+	}
+	m.InvokeNAckHandler(nack)
 }
 
 // handleCompressed 加压 消息
@@ -166,39 +174,6 @@ func (m *Members) handleCompound(buf []byte, from net.Addr, timestamp time.Time)
 	for _, part := range parts {
 		// 每一部分都有消息类型
 		m.HandleCommand(part, from, timestamp)
-	}
-}
-
-func (m *Members) handlePing(buf []byte, from net.Addr) {
-	var p Ping
-	if err := Decode(buf, &p); err != nil {
-		m.Logger.Printf("[错误] memberlist: Failed to Decode Ping request: %s %s", err, pkg.LogAddress(from))
-		return
-	}
-	// If node is provided, verify that it is for us
-	if p.Node != "" && p.Node != m.Config.Name {
-		m.Logger.Printf("[WARN] memberlist: Got Ping for unexpected node '%s' %s", p.Node, pkg.LogAddress(from))
-		return
-	}
-	var ack AckResp
-	ack.SeqNo = p.SeqNo
-	if m.Config.Ping != nil {
-		ack.Payload = m.Config.Ping.AckPayload()
-	}
-
-	Addr := ""
-	if len(p.SourceAddr) > 0 && p.SourcePort > 0 {
-		Addr = pkg.JoinHostPort(net.IP(p.SourceAddr).String(), p.SourcePort)
-	} else {
-		Addr = from.String()
-	}
-
-	a := Address{
-		Addr: Addr,
-		Name: p.SourceNode,
-	}
-	if err := m.encodeAndSendMsg(a, AckRespMsg, &ack); err != nil {
-		m.Logger.Printf("[错误] memberlist: Failed to send ack: %s %s", err, pkg.LogAddress(from))
 	}
 }
 
@@ -254,7 +229,6 @@ func (m *Members) handleIndirectPing(buf []byte, from net.Addr) {
 	}
 	m.SetAckHandler(localSeqNo, respHandler, m.Config.ProbeTimeout)
 
-	// Send the Ping.
 	Addr := pkg.JoinHostPort(net.IP(ind.Target).String(), ind.Port)
 	a := Address{
 		Addr: Addr,
@@ -284,42 +258,85 @@ func (m *Members) handleIndirectPing(buf []byte, from net.Addr) {
 	}
 }
 
+// 确认PING 响应
 func (m *Members) handleAck(buf []byte, from net.Addr, timestamp time.Time) {
 	var ack AckResp
 	if err := Decode(buf, &ack); err != nil {
-		m.Logger.Printf("[错误] memberlist: Failed to Decode ack response: %s %s", err, pkg.LogAddress(from))
+		m.Logger.Printf("[错误] memberlist: 解码失败: %s %s", err, pkg.LogAddress(from))
 		return
 	}
 	m.InvokeAckHandler(ack, timestamp)
 }
 
-func (m *Members) handleNack(buf []byte, from net.Addr) {
-	var nack NAckResp
-	if err := Decode(buf, &nack); err != nil {
-		m.Logger.Printf("[错误] memberlist: Failed to Decode nack response: %s %s", err, pkg.LogAddress(from))
+// InvokeAckHandler 如果有相关的ack处理程序，则调用一个ack处理程序，并立即收获处理程序。
+func (m *Members) InvokeAckHandler(ack AckResp, timestamp time.Time) {
+	m.AckLock.Lock()
+	_ = m.SetProbeChannels // 将待确认加入AckHandlers
+	ah, ok := m.AckHandlers[ack.SeqNo]
+	delete(m.AckHandlers, ack.SeqNo)
+	m.AckLock.Unlock()
+	if !ok {
 		return
 	}
-	m.InvokeNAckHandler(nack)
+	ah.timer.Stop()
+	ah.ackFn(ack.Payload, timestamp)
 }
 
-func (m *Members) handleSuspect(buf []byte, from net.Addr) {
-	var sus Suspect
-	if err := Decode(buf, &sus); err != nil {
-		m.Logger.Printf("[错误] memberlist: Failed to Decode Suspect message: %s %s", err, pkg.LogAddress(from))
+func (m *Members) InvokeNAckHandler(nack NAckResp) {
+	m.AckLock.Lock()
+	ah, ok := m.AckHandlers[nack.SeqNo]
+	m.AckLock.Unlock()
+	if !ok || ah.nackFn == nil {
 		return
 	}
-	m.SuspectNode(&sus)
+	ah.nackFn()
+}
+
+// UDP 响应需要直接发包
+func (m *Members) handlePing(buf []byte, from net.Addr) {
+	var p Ping
+	if err := Decode(buf, &p); err != nil {
+		m.Logger.Printf("[错误] memberlist:解码失败: %s %s", err, pkg.LogAddress(from))
+		return
+	}
+	// 如果提供了节点，请核实它是为我们准备的
+	if p.Node != "" && p.Node != m.Config.Name {
+		m.Logger.Printf("[WARN] memberlist: 得到了意外节点的Ping '%s' %s", p.Node, pkg.LogAddress(from))
+		return
+	}
+	var ack AckResp
+	ack.SeqNo = p.SeqNo
+	if m.Config.Ping != nil {
+		ack.Payload = m.Config.Ping.AckPayload()
+	}
+
+	Addr := ""
+	if len(p.SourceAddr) > 0 && p.SourcePort > 0 {
+		Addr = pkg.JoinHostPort(net.IP(p.SourceAddr).String(), p.SourcePort)
+	} else {
+		Addr = from.String()
+	}
+	fmt.Printf("PING---->%+v\n", p.PingCopy(net.IP(p.SourceAddr).String()))
+
+	a := Address{
+		Addr: Addr,
+		Name: p.SourceNode,
+	}
+	if err := m.encodeAndSendMsg(a, AckRespMsg, &ack); err != nil {
+		m.Logger.Printf("[错误] memberlist:回复ACK失败: %s %s", err, pkg.LogAddress(from))
+	}
 }
 
 // ----------------------------------------- CLIENT -------------------------------------------------
 
-// Gossip 定时广播到随机的机器
+// Gossip 定时广播到随机的几台机器
 func (m *Members) Gossip() {
 
-	// Get some random live, Suspect, or recently Dead Nodes
 	m.NodeLock.RLock()
+	//随机获取一台机器
 	kNodes := KRandomNodes(m.Config.GossipNodes, m.Nodes, func(n *NodeState) bool {
 		if n.Name == m.Config.Name {
+			// 忽略自己
 			return true
 		}
 
@@ -336,14 +353,19 @@ func (m *Members) Gossip() {
 	})
 	m.NodeLock.RUnlock()
 
-	// Compute the bytes available
+	// 计算可用的字节数
+	// 1400 - 2 - label信息 - 加密信息
 	bytesAvail := m.Config.UDPBufferSize - CompoundHeaderOverhead - LabelOverhead(m.Config.Label)
 	if m.Config.EncryptionEnabled() {
 		bytesAvail -= encryptOverhead(m.EncryptionVersion())
 	}
 
+	// a 1,2,3,4
+	// 1 --> b
+	// 2 --> c
+	// 3 --> d
 	for _, node := range kNodes {
-		// Get any pending Broadcasts
+		// 获取任何未完成的广播节目
 		msgs := m.getBroadcasts(CompoundOverhead, bytesAvail)
 		if len(msgs) == 0 {
 			return
@@ -351,16 +373,16 @@ func (m *Members) Gossip() {
 
 		Addr := node.Address()
 		if len(msgs) == 1 {
-			// Send single message as is
+			// 按原样发送单一信息
 			if err := m.RawSendMsgPacket(node.FullAddress(), &node, msgs[0]); err != nil {
-				m.Logger.Printf("[错误] memberlist: Failed to send gossip to %s: %s", Addr, err)
+				m.Logger.Printf("[错误] memberlist: gossip消息发送失败 %s: %s", Addr, err)
 			}
 		} else {
-			// Otherwise create and send one or more compound messages
+			// 否则将创建并发送一个或多个复合信息
 			compounds := MakeCompoundMessages(msgs)
 			for _, compound := range compounds {
 				if err := m.RawSendMsgPacket(node.FullAddress(), &node, compound.Bytes()); err != nil {
-					m.Logger.Printf("[错误] memberlist: Failed to send gossip to %s: %s", Addr, err)
+					m.Logger.Printf("[错误] memberlist: gossip消息发送失败 %s: %s", Addr, err)
 				}
 			}
 		}
@@ -603,14 +625,13 @@ func (m *Members) Ping(node string, Addr net.Addr) (time.Duration, error) {
 		return 0, err
 	}
 
-	// Mark the sent time here, which should be after any pre-processing and
-	// system calls to do the actual send. This probably under-reports a bit,
-	// but it's the best we can do.
+	// 在这里标记发送时间，这应该是在任何预处理和系统调用完成实际发送之后。
+	// 这可能有点报告不足，但这是我们能做的最好的。
 	sent := time.Now()
 
-	// Wait for response or timeout.
 	select {
 	case v := <-ackCh:
+		_ = AckMessage{true, nil, time.Now()}
 		if v.Complete == true {
 			return v.Timestamp.Sub(sent), nil
 		}
@@ -618,6 +639,6 @@ func (m *Members) Ping(node string, Addr net.Addr) (time.Duration, error) {
 		// Timeout, return an error below.
 	}
 
-	m.Logger.Printf("[DEBUG] memberlist: Failed UDP Ping: %v (timeout reached)", node)
+	m.Logger.Printf("[DEBUG] memberlist: udp PING 失败: %v (timeout reached)", node)
 	return 0, NoPingResponseError{ping.Node}
 }

@@ -5,8 +5,8 @@ import (
 	"container/list"
 	"errors"
 	"fmt"
+	"github.com/hashicorp/memberlist/broadcast_tree"
 	"github.com/hashicorp/memberlist/pkg"
-	"github.com/hashicorp/memberlist/queue_broadcast"
 	"log"
 	"net"
 	"strconv"
@@ -55,7 +55,7 @@ type Members struct {
 	leaveLock    sync.Mutex
 
 	Transport            NodeAwareTransport
-	HandoffCh            chan struct{} //TODO 消息队列
+	HandoffCh            chan struct{} // 通知有待处理的信息
 	HighPriorityMsgQueue *list.List
 	LowPriorityMsgQueue  *list.List
 	msgQueueLock         sync.Mutex
@@ -74,7 +74,7 @@ type Members struct {
 	AckLock     sync.Mutex
 	AckHandlers map[uint32]*AckHandler
 
-	Broadcasts *queue_broadcast.TransmitLimitedQueue
+	Broadcasts *broadcast_tree.TransmitLimitedQueue
 
 	Logger *log.Logger
 }
@@ -119,7 +119,7 @@ func (m *Members) SetAlive() error {
 		Meta:        meta,
 		Vsn:         m.Config.BuildVsnArray(),
 	}
-	m.AliveNode(&a, nil, true) // 存储节点state,广播存活消息
+	m.AliveNode(&a, nil, true) // 存储节点state,广播自己存活消息
 
 	return nil
 }

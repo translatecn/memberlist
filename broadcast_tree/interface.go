@@ -1,4 +1,4 @@
-package queue_broadcast
+package broadcast_tree
 
 import "github.com/google/btree"
 

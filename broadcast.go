@@ -1,13 +1,13 @@
 package memberlist
 
-import "github.com/hashicorp/memberlist/queue_broadcast"
+import "github.com/hashicorp/memberlist/broadcast_tree"
 
 /*
 The broadcast mechanism works by maintaining a sorted list of messages to be
 sent out. When a message is to be broadcast, the retransmit count
-is set to zero and appended to the queue_broadcast. The retransmit count serves
+is set to zero and appended to the broadcast_tree. The retransmit count serves
 as the "priority", ensuring that newer messages get sent first. Once
-a message hits the retransmit limit, it is removed from the queue_broadcast.
+a message hits the retransmit limit, it is removed from the broadcast_tree.
 
 Additionally, older entries can be invalidated by new messages that
 are contradictory. For example, if we send "{Suspect M1 inc: 1},
@@ -40,7 +40,7 @@ func (m *Members) EncodeBroadcastNotify(node string, msgType MessageType, msg in
 
 // queueBroadcast 开始广播消息,它将被发送至配置的次数。该消息有可能被未来关于同一节点的消息所废止。
 func (m *Members) queueBroadcast(node string, msg []byte, notify chan struct{}) {
-	b := &queue_broadcast.MemberlistBroadcast{Node: node, Msg: msg, Notify: notify}
+	b := &broadcast_tree.MemberlistBroadcast{Node: node, Msg: msg, Notify: notify}
 	m.Broadcasts.QueueBroadcast(b)
 }
 
@@ -58,12 +58,11 @@ func (m *Members) getBroadcasts(overhead, limit int) [][]byte {
 			bytesUsed += len(msg) + overhead
 		}
 
-		// Check space remaining for user messages
+		// 检查剩余空间
 		avail := limit - bytesUsed
 		if avail > overhead+UserMsgOverhead {
 			UserMsgs := d.GetBroadcasts(overhead+UserMsgOverhead, avail)
 
-			// Frame each user message
 			for _, msg := range UserMsgs {
 				buf := make([]byte, 1, len(msg)+1)
 				buf[0] = byte(UserMsg)

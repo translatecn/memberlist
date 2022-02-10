@@ -4,7 +4,7 @@ import (
 	"container/list"
 	"fmt"
 	"github.com/hashicorp/memberlist/pkg"
-	"github.com/hashicorp/memberlist/queue_broadcast"
+	"github.com/hashicorp/memberlist/broadcast_tree"
 	"log"
 	"os"
 	"strings"
@@ -125,7 +125,7 @@ func NewMembers(conf *Config) (*Members, error) {
 		NodeTimers:           make(map[string]*Suspicion),
 		Awareness:            pkg.NewAwareness(conf.AwarenessMaxMultiplier), // 感知对象
 		AckHandlers:          make(map[uint32]*AckHandler),
-		Broadcasts:           &queue_broadcast.TransmitLimitedQueue{RetransmitMult: conf.RetransmitMult},
+		Broadcasts:           &broadcast_tree.TransmitLimitedQueue{RetransmitMult: conf.RetransmitMult},
 		Logger:               Logger,
 	}
 	m.Broadcasts.NumNodes = func() int {
@@ -138,8 +138,8 @@ func NewMembers(conf *Config) (*Members, error) {
 	}
 
 	go m.StreamListen()  // push\pull模式,处理每一个tcp链接 ✅
-	go m.PacketListen()  // 直接消息传递
-	go m.PacketHandler() //TODO 用于处理消息
+	go m.PacketListen()  // 从网络中接收消息
+	go m.PacketHandler() // 处理消息
 
 	return m, nil
 }

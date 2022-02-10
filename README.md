@@ -127,9 +127,9 @@ tq.Descend  按照将序遍历
 
 ``` Broadcast
 c:
-    AliveNode                           |--------> Gossip()      定时广播到随机的机器
+    AliveNode                           |<--   Gossip()      定时广播到随机的机器
     DeadNode          ------> Btree  ---|      在主动发包到某个节点的过程中，填充额外的信息
-    EncodeBroadcast                     |--->  encodeAndSendMsg  // --->  调用方 handlePing、handleIndirectPing、ProbeNode、Ping  
+    EncodeBroadcast                     |<--   encodeAndSendMsg  <--  Ping  
     Refute
 
 s:
@@ -143,7 +143,29 @@ s:
                 handlePing
                 handleIndirectPing
                 ProbeNode
-                Ping  
-
-
+    
+    ↑---->  返回耗时、错误
+a (Ping)--->1、PingMsg---> b(handlePing)
+    ↑                          ↓
+    ↑<----  2、AckRespMsg  <---↓
+    
+    
+    
+    
+AliveMsg:
+    AliveNode  
+    Refute    都是将自己还活着的消息存入到BTree中
+    等待handlePing、handleIndirectPing、ProbeNode调用; 将BTree中的数据发送到一台指定的机器
+    
+Gossip
+    会定时同步消息
+    类似,多条消息会合并
+    // a 1,2,3,4
+	// 1 --> b
+	// 2 --> c
+	// 3 --> d
+    
+    
+    
+    
 ```

@@ -132,7 +132,7 @@ type Config struct {
 	HandoffQueueDepth int
 
 	// 写缓冲大小
-	UDPBufferSize int
+	UDPBufferSize int // 1400
 
 	// 控制一个死亡节点的名字可以被不同地址或端口的节点回收的时间。默认情况下，该值为0，意味着节点不能以这种方式被回收。
 	DeadNodeReclaimTime time.Duration

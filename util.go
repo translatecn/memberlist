@@ -38,7 +38,7 @@ func Encode(msgType MessageType, in interface{}) (*bytes.Buffer, error) {
 	return buf, err
 }
 
-// 放回0~n之间的随机值
+// RandomOffset 反回0~n之间的随机值
 func RandomOffset(n int) int {
 	if n == 0 {
 		return 0
@@ -97,34 +97,30 @@ func MoveDeadNodes(nodes []*NodeState, gossipToTheDeadTime time.Duration) int {
 	return n - numDead
 }
 
-// KRandomNodes is used to select up to k random Nodes, excluding any Nodes where
-// the exclude function returns true. It is possible that less than k Nodes are
-// returned.
+// KRandomNodes
+// 是用来选择多达k个随机节点的，排除任何排除函数返回true的节点。有可能返回少于k个的节点。
 func KRandomNodes(k int, nodes []*NodeState, exclude func(*NodeState) bool) []Node {
+	//exclude  StateAlive, StateSuspect 以及StateDead没有超过时限的机器
 	n := len(nodes)
 	kNodes := make([]Node, 0, k)
 OUTER:
-	// Probe up to 3*n times, with large n this is not necessary
-	// since k << n, but with small n we want search to be
-	// exhaustive
+	// 探测多达3*n次，对于大的n来说，这是没有必要的，因为k<<n，但对于小的n，我们希望搜索是 穷尽
 	for i := 0; i < 3*n && len(kNodes) < k; i++ {
-		// Get random NodeState
 		idx := RandomOffset(n)
 		state := nodes[idx]
 
-		// Give the filter a shot at it.
+
 		if exclude != nil && exclude(state) {
 			continue OUTER
 		}
 
-		// Check if we have this node already
+		// 检查是否已经有了该节点
 		for j := 0; j < len(kNodes); j++ {
 			if state.Node.Name == kNodes[j].Name {
 				continue OUTER
 			}
 		}
 
-		// Append the node
 		kNodes = append(kNodes, state.Node)
 	}
 	return kNodes

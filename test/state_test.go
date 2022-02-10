@@ -1447,7 +1447,7 @@ func TestMemberList_AliveNode_Refute(t *testing.T) {
 	a := memberlist.Alive{Node: m.Config.Name, Addr: []byte{127, 0, 0, 1}, Incarnation: 1, Vsn: m.Config.BuildVsnArray()}
 	m.AliveNode(&a, nil, true)
 
-	// Clear queue_broadcast
+	// Clear broadcast_tree
 	m.Broadcasts.Reset()
 
 	// Conflicting Alive
@@ -1490,7 +1490,7 @@ func TestMemberList_AliveNode_Conflict(t *testing.T) {
 	a := memberlist.Alive{Node: nodeName, Addr: []byte{127, 0, 0, 1}, Port: 8000, Incarnation: 1, Vsn: m.Config.BuildVsnArray()}
 	m.AliveNode(&a, nil, true)
 
-	// Clear queue_broadcast
+	// Clear broadcast_tree
 	m.Broadcasts.Reset()
 
 	// Conflicting Alive
@@ -1656,7 +1656,7 @@ func TestMemberList_SuspectNode_DoubleSuspect(t *testing.T) {
 		t.Fatalf("bad change delta")
 	}
 
-	// clear the broadcast queue_broadcast
+	// clear the broadcast broadcast_tree
 	m.Broadcasts.Reset()
 
 	// Suspect again
@@ -1683,7 +1683,7 @@ func TestMemberList_SuspectNode_OldSuspect(t *testing.T) {
 	state := m.NodeMap["test"]
 	state.StateChange = state.StateChange.Add(-time.Hour)
 
-	// Clear queue_broadcast
+	// Clear broadcast_tree
 	m.Broadcasts.Reset()
 
 	s := memberlist.Suspect{Node: "test", Incarnation: 1}
@@ -1706,7 +1706,7 @@ func TestMemberList_SuspectNode_Refute(t *testing.T) {
 	a := memberlist.Alive{Node: m.Config.Name, Addr: []byte{127, 0, 0, 1}, Incarnation: 1, Vsn: m.Config.BuildVsnArray()}
 	m.AliveNode(&a, nil, true)
 
-	// Clear queue_broadcast
+	// Clear broadcast_tree
 	m.Broadcasts.Reset()
 
 	// Make sure health is in a good state
@@ -1791,7 +1791,7 @@ func TestMemberList_DeadNodeLeft(t *testing.T) {
 		t.Fatalf("expected queued Dead msg")
 	}
 
-	// Clear queue_broadcast
+	// Clear broadcast_tree
 	// m.Broadcasts.Reset()
 
 	// New Alive node
@@ -1886,7 +1886,7 @@ func TestMemberList_DeadNode_Double(t *testing.T) {
 	d := memberlist.Dead{Node: "test", Incarnation: 1}
 	m.DeadNode(&d)
 
-	// Clear queue_broadcast
+	// Clear broadcast_tree
 	m.Broadcasts.Reset()
 
 	// Notify after the first Dead
@@ -1953,7 +1953,7 @@ func TestMemberList_DeadNode_Refute(t *testing.T) {
 	a := memberlist.Alive{Node: m.Config.Name, Addr: []byte{127, 0, 0, 1}, Incarnation: 1, Vsn: m.Config.BuildVsnArray()}
 	m.AliveNode(&a, nil, true)
 
-	// Clear queue_broadcast
+	// Clear broadcast_tree
 	m.Broadcasts.Reset()
 
 	// Make sure health is in a good state

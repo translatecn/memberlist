@@ -55,7 +55,7 @@ type ConflictDelegate interface {
 // into ack messages. Note that in order to be meaningful for RTT estimates, this
 // delegate does not apply to indirect pings, nor fallback pings sent over TCP.
 type PingDelegate interface {
-	// AckPayload is invoked when an ack is being sent; the returned bytes will be appended to the ack
+	// AckPayload 在发送ack时被调用；返回的字节将被附加到ack中。
 	AckPayload() []byte
 	// NotifyPingComplete  NotifyPing is invoked when an ack for a Ping is received
 	NotifyPingComplete(other *Node, rtt time.Duration, payload []byte)

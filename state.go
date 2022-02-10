@@ -35,14 +35,12 @@ type Node struct {
 	DCur  uint8         // Current version delegate is speaking
 }
 
-// Address returns the host:Port form of a node's Address, suitable for use
-// with a Transport.
+// Address 返回host:Port
 func (n *Node) Address() string {
 	return pkg.JoinHostPort(n.Addr.String(), n.Port)
 }
 
-// FullAddress returns the node name and host:Port form of a node's Address,
-// suitable for use with a Transport.
+// FullAddress 返回Address
 func (n *Node) FullAddress() Address {
 	return Address{
 		Addr: pkg.JoinHostPort(n.Addr.String(), n.Port),
@@ -358,29 +356,7 @@ func (m *Members) SetAckHandler(seqNo uint32, ackFn func([]byte, time.Time), tim
 	})
 }
 
-// InvokeAckHandler Invokes an ack handler if any is associated, and reaps the handler immediately
-func (m *Members) InvokeAckHandler(ack AckResp, timestamp time.Time) {
-	m.AckLock.Lock()
-	ah, ok := m.AckHandlers[ack.SeqNo]
-	delete(m.AckHandlers, ack.SeqNo)
-	m.AckLock.Unlock()
-	if !ok {
-		return
-	}
-	ah.timer.Stop()
-	ah.ackFn(ack.Payload, timestamp)
-}
 
-// InvokeNAckHandler Invokes nack handler if any is associated.
-func (m *Members) InvokeNAckHandler(nack NAckResp) {
-	m.AckLock.Lock()
-	ah, ok := m.AckHandlers[nack.SeqNo]
-	m.AckLock.Unlock()
-	if !ok || ah.nackFn == nil {
-		return
-	}
-	ah.nackFn()
-}
 
 // Refute 当收到传来的关于本节点被怀疑或死亡的信息时，会发送一个Alive gossip message。
 // 它将确保incarnation超过给定的 accusedInc 值，或者你可以提供 0 来获取下一个incarnation。

@@ -223,8 +223,9 @@ func TestMoveDeadNodes(t *testing.T) {
 	}
 }
 
+// OK
 func TestKRandomNodes(t *testing.T) {
-	nodes := []*memberlist.NodeState{}
+	var nodes []*memberlist.NodeState
 	for i := 0; i < 90; i++ {
 		// Half the Nodes are in a bad state
 		state := memberlist.StateAlive

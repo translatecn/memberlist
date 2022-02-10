@@ -27,7 +27,7 @@ type MessageType uint8
 const (
 	PingMsg MessageType = iota
 	IndirectPingMsg
-	AckRespMsg
+	AckRespMsg  // PING 确认
 	SuspectMsg  // 怀疑消息
 	AliveMsg    // 存活消息
 	DeadMsg     // 死亡消息
@@ -47,7 +47,7 @@ const (
 	HasLabelMsg MessageType = 244
 )
 
-// CompressionType is used to specify the Compression algorithm
+// CompressionType 压缩类型
 type CompressionType uint8
 
 const (
@@ -85,13 +85,31 @@ func (c *peekedConn) Read(p []byte) (n int, err error) {
 type Ping struct {
 	SeqNo uint32
 	// 节点的发送，以便目标可以验证他们是预定的收件人。这是为了保护再次以新名字重新启动的代理。
-	Node       string
+	Node       string // 目标机器的名字
 	SourceAddr []byte `codec:",omitempty"` // Source Address, used for a direct reply
 	SourcePort uint16 `codec:",omitempty"` // Source Port, used for a direct reply
-	SourceNode string `codec:",omitempty"` // Source name, used for a direct reply
+	SourceNode string `codec:",omitempty"` // 本机的名字
+}
+type TempPing struct {
+	SeqNo      uint32
+	Node       string
+	SourceAddr string `codec:",omitempty"`
+	SourcePort uint16 `codec:",omitempty"`
+	SourceNode string `codec:",omitempty"`
 }
 
-// indirect Ping sent to an indirect node
+func (p *Ping) PingCopy(SourceAddr string) TempPing {
+
+	return TempPing{
+		SeqNo:      p.SeqNo,
+		Node:       p.Node,
+		SourceAddr: SourceAddr,
+		SourcePort: p.SourcePort,
+		SourceNode: p.SourceNode,
+	}
+}
+
+// IndirectPingReq   sent to an indirect node
 type IndirectPingReq struct {
 	SeqNo  uint32
 	Target []byte
@@ -192,59 +210,7 @@ type msgHandoff struct {
 	from    net.Addr
 }
 
-// getNextMessage 使用LIFO，按优先级顺序返回下一个要处理的消息
-func (m *Members) getNextMessage() (msgHandoff, bool) {
-	m.msgQueueLock.Lock()
-	defer m.msgQueueLock.Unlock()
-
-	if el := m.HighPriorityMsgQueue.Back(); el != nil {
-		m.HighPriorityMsgQueue.Remove(el)
-		msg := el.Value.(msgHandoff)
-		return msg, true
-	} else if el := m.LowPriorityMsgQueue.Back(); el != nil {
-		m.LowPriorityMsgQueue.Remove(el)
-		msg := el.Value.(msgHandoff)
-		return msg, true
-	}
-	return msgHandoff{}, false
-}
-
-// PacketHandler 从listener解耦出来,避免阻塞 ,导致ping\ack延迟
-func (m *Members) PacketHandler() {
-	for {
-		select {
-		case <-m.HandoffCh: // 用户消息ch,当收到UserMsg时激活
-			for {
-				msg, ok := m.getNextMessage() // 从队列里拿,
-				if !ok {
-					break
-				}
-				msgType := msg.msgType
-				buf := msg.buf
-				from := msg.from
-
-				switch msgType {
-				case SuspectMsg:
-					m.handleSuspect(buf, from)
-				case AliveMsg:
-					m.handleAlive(buf, from)
-				case DeadMsg:
-					m.handleDead(buf, from)
-				case UserMsg:
-					m.handleUser(buf, from)
-				default:
-					m.Logger.Printf("[错误] memberlist: 消息类型不支持 (%d) 不支持 %s (packet handler)", msgType, pkg.LogAddress(from))
-				}
-			}
-
-		case <-m.ShutdownCh:
-			return
-		}
-	}
-}
-
-// ensureCanConnect return the IP from a RemoteAddress
-// return error if this client must not connect
+// ensureCanConnect 确保IP能够链接
 func (m *Members) ensureCanConnect(from net.Addr) error {
 	if !m.Config.IPMustBeChecked() {
 		return nil
@@ -260,55 +226,9 @@ func (m *Members) ensureCanConnect(from net.Addr) error {
 
 	ip := net.ParseIP(host)
 	if ip == nil {
-		return fmt.Errorf("Cannot parse IP from %s", host)
+		return fmt.Errorf("不能解析IP %s", host)
 	}
 	return m.Config.IPAllowed(ip)
-}
-
-func (m *Members) handleAlive(buf []byte, from net.Addr) {
-	if err := m.ensureCanConnect(from); err != nil {
-		m.Logger.Printf("[DEBUG] memberlist: Blocked Alive message: %s %s", err, pkg.LogAddress(from))
-		return
-	}
-	var live Alive
-	if err := Decode(buf, &live); err != nil {
-		m.Logger.Printf("[错误] memberlist: Failed to Decode Alive message: %s %s", err, pkg.LogAddress(from))
-		return
-	}
-	if m.Config.IPMustBeChecked() {
-		innerIP := net.IP(live.Addr)
-		if innerIP != nil {
-			if err := m.Config.IPAllowed(innerIP); err != nil {
-				m.Logger.Printf("[DEBUG] memberlist: Blocked Alive.Addr=%s message from: %s %s", innerIP.String(), err, pkg.LogAddress(from))
-				return
-			}
-		}
-	}
-
-	// For proto versions < 2, there is no Port provided. Mask old
-	// behavior by using the configured Port
-	if m.ProtocolVersion() < 2 || live.Port == 0 {
-		live.Port = uint16(m.Config.BindPort)
-	}
-
-	m.AliveNode(&live, nil, false)
-}
-
-func (m *Members) handleDead(buf []byte, from net.Addr) {
-	var d Dead
-	if err := Decode(buf, &d); err != nil {
-		m.Logger.Printf("[错误] memberlist: Failed to Decode Dead message: %s %s", err, pkg.LogAddress(from))
-		return
-	}
-	m.DeadNode(&d)
-}
-
-// handleUser is used to notify channels of incoming user data
-func (m *Members) handleUser(buf []byte, from net.Addr) {
-	d := m.Config.Delegate
-	if d != nil {
-		d.NotifyMsg(buf)
-	}
 }
 
 // encodeAndSendMsg 编码并发送消息
@@ -674,4 +594,21 @@ func (m *Members) DecryptRemoteState(bufConn io.Reader, streamLabel string) ([]b
 	// Decrypt the payload
 	keys := m.Config.Keyring.GetKeys()
 	return DecryptPayload(keys, cipherBytes, dataBytes)
+}
+
+// getNextMessage 使用LIFO，按优先级顺序返回下一个要处理的消息
+func (m *Members) getNextMessage() (msgHandoff, bool) {
+	m.msgQueueLock.Lock()
+	defer m.msgQueueLock.Unlock()
+
+	if el := m.HighPriorityMsgQueue.Back(); el != nil {
+		m.HighPriorityMsgQueue.Remove(el)
+		msg := el.Value.(msgHandoff)
+		return msg, true
+	} else if el := m.LowPriorityMsgQueue.Back(); el != nil {
+		m.LowPriorityMsgQueue.Remove(el)
+		msg := el.Value.(msgHandoff)
+		return msg, true
+	}
+	return msgHandoff{}, false
 }
