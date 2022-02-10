@@ -164,7 +164,7 @@ func (m *Members) PushPull() {
 }
 
 // PushPullNode 与一个特定的节点进行完整的状态交换。
-func (m *Members) PushPullNode(a Address, join bool) error {
+func (m *Members) PushPullNode(a pkg.Address, join bool) error {
 
 	remote, userState, err := m.sendAndReceiveState(a, join)
 	if err != nil {
@@ -178,7 +178,7 @@ func (m *Members) PushPullNode(a Address, join bool) error {
 }
 
 // OK 发送本机数据、接收远端数据
-func (m *Members) sendAndReceiveState(a Address, join bool) ([]PushNodeState, []byte, error) {
+func (m *Members) sendAndReceiveState(a pkg.Address, join bool) ([]PushNodeState, []byte, error) {
 	if a.Name == "" && m.Config.RequireNodeNames {
 		return nil, nil, errNodeNamesAreRequired
 	}

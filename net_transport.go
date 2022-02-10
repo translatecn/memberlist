@@ -156,12 +156,12 @@ func (t *NetTransport) FinalAdvertiseAddr(ip string, port int) (net.IP, int, err
 
 // WriteTo 发送数据到Addr
 func (t *NetTransport) WriteTo(b []byte, Addr string) (time.Time, error) {
-	a := Address{Addr: Addr, Name: ""}
+	a := pkg.Address{Addr: Addr, Name: ""}
 	return t.WriteToAddress(b, a)
 }
 
 // WriteToAddress 往a发送数据
-func (t *NetTransport) WriteToAddress(b []byte, a Address) (time.Time, error) {
+func (t *NetTransport) WriteToAddress(b []byte, a pkg.Address) (time.Time, error) {
 	Addr := a.Addr
 	udpAddr, err := net.ResolveUDPAddr("udp", Addr)
 	if err != nil {
@@ -176,7 +176,6 @@ func (t *NetTransport) PacketCh() <-chan *Packet {
 	return t.packetCh
 }
 
-// RecIngestPacket
 func (t *NetTransport) RecIngestPacket(conn net.Conn, Addr net.Addr, now time.Time, shouldClose bool) error {
 	if shouldClose {
 		defer conn.Close()
@@ -205,12 +204,12 @@ func (t *NetTransport) RecIngestPacket(conn net.Conn, Addr net.Addr, now time.Ti
 
 // DialTimeout 与a建联，设置了超时时间
 func (t *NetTransport) DialTimeout(Addr string, timeout time.Duration) (net.Conn, error) {
-	a := Address{Addr: Addr, Name: ""}
+	a := pkg.Address{Addr: Addr, Name: ""}
 	return t.DialAddressTimeout(a, timeout)
 }
 
 // DialAddressTimeout 与a建联，设置了超时时间
-func (t *NetTransport) DialAddressTimeout(a Address, timeout time.Duration) (net.Conn, error) {
+func (t *NetTransport) DialAddressTimeout(a pkg.Address, timeout time.Duration) (net.Conn, error) {
 	Addr := a.Addr
 
 	dialer := net.Dialer{Timeout: timeout}

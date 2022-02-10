@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"fmt"
 	"github.com/sean-/seed"
 	"math"
 	"net"
@@ -10,6 +11,20 @@ import (
 
 func init() {
 	seed.Init()
+}
+
+type Address struct {
+	//网络地址   IP:Port
+	Addr string
+	// 该地址的名字,可选
+	Name string
+}
+
+func (a *Address) String() string {
+	if a.Name != "" {
+		return fmt.Sprintf("%s (%s)", a.Name, a.Addr)
+	}
+	return a.Addr
 }
 
 // RetransmitLimit 计算出重传的极限

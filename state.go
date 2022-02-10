@@ -41,8 +41,8 @@ func (n *Node) Address() string {
 }
 
 // FullAddress 返回Address
-func (n *Node) FullAddress() Address {
-	return Address{
+func (n *Node) FullAddress() pkg.Address {
+	return pkg.Address{
 		Addr: pkg.JoinHostPort(n.Addr.String(), n.Port),
 		Name: n.Name,
 	}
@@ -69,7 +69,7 @@ func (n *NodeState) Address() string {
 
 // FullAddress returns the node name and host:Port form of a node's Address,
 // suitable for use with a Transport.
-func (n *NodeState) FullAddress() Address {
+func (n *NodeState) FullAddress() pkg.Address {
 	return n.Node.FullAddress()
 }
 

@@ -2,6 +2,7 @@ package test
 
 import (
 	"github.com/hashicorp/memberlist"
+	"github.com/hashicorp/memberlist/pkg"
 	"log"
 	"net"
 	"strings"
@@ -92,8 +93,7 @@ func TestTransport_Send(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-
-	if err := m2.SendTo(t1.Addr, []byte("SendTo")); err != nil {
+	if err := m2.SendToAddress(pkg.Address{Addr: t1.Addr.String(), Name: ""}, []byte("SendTo")); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 

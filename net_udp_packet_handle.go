@@ -4,6 +4,7 @@ import (
 	"github.com/hashicorp/memberlist/pkg"
 	"net"
 )
+// ----------------------------------------- OK -------------------------------------------------
 
 // PacketHandler 从listener解耦出来,避免阻塞 ,导致ping\ack延迟
 func (m *Members) PacketHandler() {
@@ -84,6 +85,8 @@ func (m *Members) handleDead(buf []byte, from net.Addr) {
 func (m *Members) handleUser(buf []byte, from net.Addr) {
 	_ = m.SendUserMsg
 	_ = m.SendToAddress
+	_ = m.SendBestEffort
+	_ = m.SendToUDP
 	//_ = m.Config.Delegate.GetBroadcasts
 
 	d := m.Config.Delegate

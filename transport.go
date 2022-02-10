@@ -2,6 +2,7 @@ package memberlist
 
 import (
 	"fmt"
+	"github.com/hashicorp/memberlist/pkg"
 	"net"
 	"time"
 )
@@ -53,19 +54,7 @@ type Transport interface {
 	SetShutdown() error
 }
 
-type Address struct {
-	//网络地址   IP:Port
-	Addr string
-	// 该地址的名字,可选
-	Name string
-}
 
-func (a *Address) String() string {
-	if a.Name != "" {
-		return fmt.Sprintf("%s (%s)", a.Name, a.Addr)
-	}
-	return a.Addr
-}
 
 // IngestionAwareTransport is not used.
 //
@@ -79,8 +68,8 @@ type IngestionAwareTransport interface {
 
 type NodeAwareTransport interface {
 	Transport
-	WriteToAddress(b []byte, Addr Address) (time.Time, error)
-	DialAddressTimeout(Addr Address, timeout time.Duration) (net.Conn, error)
+	WriteToAddress(b []byte, Addr pkg.Address) (time.Time, error)
+	DialAddressTimeout(Addr pkg.Address, timeout time.Duration) (net.Conn, error)
 }
 
 // shim 垫片
@@ -90,11 +79,11 @@ type ShimNodeAwareTransport struct {
 
 var _ NodeAwareTransport = (*ShimNodeAwareTransport)(nil)
 
-func (t *ShimNodeAwareTransport) WriteToAddress(b []byte, Addr Address) (time.Time, error) {
+func (t *ShimNodeAwareTransport) WriteToAddress(b []byte, Addr pkg.Address) (time.Time, error) {
 	return t.WriteTo(b, Addr.Addr)
 }
 
-func (t *ShimNodeAwareTransport) DialAddressTimeout(Addr Address, timeout time.Duration) (net.Conn, error) {
+func (t *ShimNodeAwareTransport) DialAddressTimeout(Addr pkg.Address, timeout time.Duration) (net.Conn, error) {
 	return t.DialTimeout(Addr.Addr, timeout)
 }
 
@@ -105,7 +94,7 @@ type LabelWrappedTransport struct {
 
 var _ NodeAwareTransport = (*LabelWrappedTransport)(nil)
 
-func (t *LabelWrappedTransport) WriteToAddress(buf []byte, Addr Address) (time.Time, error) {
+func (t *LabelWrappedTransport) WriteToAddress(buf []byte, Addr pkg.Address) (time.Time, error) {
 	var err error
 	buf, err = AddLabelHeaderToPacket(buf, t.Label)
 	if err != nil {
@@ -123,7 +112,7 @@ func (t *LabelWrappedTransport) WriteTo(buf []byte, Addr string) (time.Time, err
 	return t.NodeAwareTransport.WriteTo(buf, Addr)
 }
 
-func (t *LabelWrappedTransport) DialAddressTimeout(Addr Address, timeout time.Duration) (net.Conn, error) {
+func (t *LabelWrappedTransport) DialAddressTimeout(Addr pkg.Address, timeout time.Duration) (net.Conn, error) {
 	conn, err := t.NodeAwareTransport.DialAddressTimeout(Addr, timeout)
 	if err != nil {
 		return nil, err

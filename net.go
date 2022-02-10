@@ -132,7 +132,7 @@ type AckResp struct {
 	Payload []byte
 }
 
-// nack response is sent for an indirect Ping when the pinger doesn't hear from
+// NAckResp response is sent for an indirect Ping when the pinger doesn't hear from
 // the Ping-ee within the configured timeout. This lets the original node know
 // that the indirect Ping attempt happened but didn't succeed.
 type NAckResp struct {
@@ -195,8 +195,7 @@ type PushNodeState struct {
 	Vsn         []uint8 // 协议版本
 }
 
-// Compress is used to wrap an underlying payload
-// using a specified Compression algorithm
+// Compress  包装数据、压缩算法
 type Compress struct {
 	Algo CompressionType
 	Buf  []byte
@@ -210,7 +209,7 @@ type msgHandoff struct {
 }
 
 // encodeAndSendMsg 编码并发送消息
-func (m *Members) encodeAndSendMsg(a Address, msgType MessageType, msg interface{}) error {
+func (m *Members) encodeAndSendMsg(a pkg.Address, msgType MessageType, msg interface{}) error {
 	out, err := Encode(msgType, msg)
 	if err != nil {
 		return err
@@ -222,7 +221,7 @@ func (m *Members) encodeAndSendMsg(a Address, msgType MessageType, msg interface
 }
 
 // 发送消息包到另一个节点
-func (m *Members) sendMsg(a Address, msg []byte) error {
+func (m *Members) sendMsg(a pkg.Address, msg []byte) error {
 	// Check if we can piggy back any messages
 	// 检查我们是否可以捎带任何信息
 	// 1400 - 消息长度 - 2 - [ label类型 (1byte) + label长度(1byte) + label大小 ] - 29
@@ -283,7 +282,7 @@ func (m *Members) readUserMsg(bufConn io.Reader, dec *codec.Decoder) error {
 // a Ping, and waits for an ack. All of this is done as a series of blocking
 // operations, given the Deadline. The bool return parameter is true if we
 // we able to round trip a Ping to the other node.
-func (m *Members) SendPingAndWaitForAck(a Address, ping Ping, Deadline time.Time) (bool, error) {
+func (m *Members) SendPingAndWaitForAck(a pkg.Address, ping Ping, Deadline time.Time) (bool, error) {
 	if a.Name == "" && m.Config.RequireNodeNames {
 		return false, errNodeNamesAreRequired
 	}
@@ -332,7 +331,7 @@ func (m *Members) SendPingAndWaitForAck(a Address, ping Ping, Deadline time.Time
 // ------------------------------------------ OVER ---------------------------------------
 
 // SendUserMsg 是用来将用户信息流转到另一个主机。
-func (m *Members) SendUserMsg(a Address, sendBuf []byte) error {
+func (m *Members) SendUserMsg(a pkg.Address, sendBuf []byte) error {
 	if a.Name == "" && m.Config.RequireNodeNames {
 		return errNodeNamesAreRequired
 	}
@@ -362,7 +361,7 @@ func (m *Members) SendUserMsg(a Address, sendBuf []byte) error {
 }
 
 // RawSendMsgPacket UDP 是用来将一个信息流传到另一个主机上，不作任何修改
-func (m *Members) RawSendMsgPacket(a Address, node *Node, msg []byte) error {
+func (m *Members) RawSendMsgPacket(a pkg.Address, node *Node, msg []byte) error {
 	//压缩+CRC+加密
 	if a.Name == "" && m.Config.RequireNodeNames {
 		return errNodeNamesAreRequired

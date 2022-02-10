@@ -124,13 +124,6 @@ func (m *Members) SetAlive() error {
 	return nil
 }
 
-// Deprecated: SendTo is deprecated in favor of SendBestEffort, which requires a node to
-// target. If you don't have a node then use SendToAddress.
-func (m *Members) SendTo(to net.Addr, msg []byte) error {
-	a := Address{Addr: to.String(), Name: ""}
-	return m.SendToAddress(a, msg)
-}
-
 // NumMembers 返回当前已知的存活结点
 func (m *Members) NumMembers() (Alive int) {
 	m.NodeLock.RLock()
@@ -349,7 +342,7 @@ func (m *Members) Join(existing []string) (int, error) {
 
 		for _, Addr := range Addrs {
 			hp := pkg.JoinHostPort(Addr.IP.String(), Addr.Port)
-			a := Address{Addr: hp, Name: Addr.NodeName}
+			a := pkg.Address{Addr: hp, Name: Addr.NodeName}
 			if err := m.PushPullNode(a, true); err != nil {
 				err = fmt.Errorf("加入失败 %s: %v", a.Addr, err)
 				errs = multierror.Append(errs, err)
@@ -367,7 +360,7 @@ func (m *Members) Join(existing []string) (int, error) {
 }
 
 // SendToAddress UDP发送UserMsg
-func (m *Members) SendToAddress(a Address, msg []byte) error {
+func (m *Members) SendToAddress(a pkg.Address, msg []byte) error {
 	buf := make([]byte, 1, len(msg)+1)
 	buf[0] = byte(UserMsg)
 	buf = append(buf, msg...)
@@ -380,7 +373,7 @@ func (m *Members) SendBestEffort(to *Node, msg []byte) error {
 	buf[0] = byte(UserMsg)
 	buf = append(buf, msg...)
 
-	a := Address{Addr: to.Address(), Name: to.Name}
+	a := pkg.Address{Addr: to.Address(), Name: to.Name}
 	return m.RawSendMsgPacket(a, to, buf)
 }
 

@@ -92,12 +92,12 @@ func (t *MockTransport) FinalAdvertiseAddr(string, int) (net.IP, int, error) {
 
 // See Transport.
 func (t *MockTransport) WriteTo(b []byte, Addr string) (time.Time, error) {
-	a := Address{Addr: Addr, Name: ""}
+	a := pkg.Address{Addr: Addr, Name: ""}
 	return t.WriteToAddress(b, a)
 }
 
 // See NodeAwareTransport.
-func (t *MockTransport) WriteToAddress(b []byte, a Address) (time.Time, error) {
+func (t *MockTransport) WriteToAddress(b []byte, a pkg.Address) (time.Time, error) {
 	dest, err := t.getPeer(a)
 	if err != nil {
 		return time.Time{}, err
@@ -147,12 +147,12 @@ func (t *MockTransport) RecIngestPacket(conn net.Conn, Addr net.Addr, now time.T
 
 // See Transport.
 func (t *MockTransport) DialTimeout(Addr string, timeout time.Duration) (net.Conn, error) {
-	a := Address{Addr: Addr, Name: ""}
+	a := pkg.Address{Addr: Addr, Name: ""}
 	return t.DialAddressTimeout(a, timeout)
 }
 
 // See NodeAwareTransport.
-func (t *MockTransport) DialAddressTimeout(a Address, timeout time.Duration) (net.Conn, error) {
+func (t *MockTransport) DialAddressTimeout(a pkg.Address, timeout time.Duration) (net.Conn, error) {
 	dest, err := t.getPeer(a)
 	if err != nil {
 		return nil, err
@@ -179,7 +179,7 @@ func (t *MockTransport) SetShutdown() error {
 	return nil
 }
 
-func (t *MockTransport) getPeer(a Address) (*MockTransport, error) {
+func (t *MockTransport) getPeer(a pkg.Address) (*MockTransport, error) {
 	var (
 		dest *MockTransport
 		ok   bool

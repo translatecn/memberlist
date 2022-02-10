@@ -181,11 +181,11 @@ Join是建立的TCP链接
 UserMsg:
 c:
     SendUserMsg
-    SendReliable
     SendToAddress
     SendBestEffort
     SendToUDP
     以及配置了 m.Config.Delegate.GetBroadcasts   任何一个可以广播的行为
     
+    程序本身没有发送UserMsg
     
 ```
