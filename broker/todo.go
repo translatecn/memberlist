@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"github.com/google/btree"
 	"github.com/hashicorp/go-sockaddr"
 	"net"
 	"os"
@@ -29,7 +30,7 @@ func ma2in() {
 	fmt.Println(sockaddr.GetPrivateIP())
 }
 
-func main() {
+func mai3n() {
 	context.Background().Done()
 	runtime.GOMAXPROCS(10)
 	//for i := 0; i < 10; i++ {
@@ -57,14 +58,30 @@ func main() {
 	time.Sleep(time.Second * 3)
 }
 
-//package dev
-//
-//import (
-//	"encoding/json"
-//	"fmt"
-//)
-//
-//func Println(data interface{})  {
-//	marshal, _ := json.Marshal(data)
-//	fmt.Println(string(marshal))
-//}
+func main() {
+	bt()
+}
+
+type A struct {
+	Num int
+}
+
+func (a *A) Less(b btree.Item) bool {
+	c := b.(*A)
+
+	if a == nil && c == nil {
+		return true
+	}
+	return a.Num < c.Num
+}
+func bt() {
+	tq := btree.New(32)
+	var a *A
+	tq.ReplaceOrInsert(a)
+	tq.ReplaceOrInsert(a)
+	tq.ReplaceOrInsert(a)
+	tq.ReplaceOrInsert(a)
+	tq.ReplaceOrInsert(a)
+	fmt.Println(tq.Delete(a))
+	fmt.Println(tq.Len()) //TODO 还是5
+}

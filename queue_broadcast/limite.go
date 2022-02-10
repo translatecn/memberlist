@@ -7,35 +7,11 @@ import (
 	"sync"
 )
 
-// 被限制的广播
-type limitedBroadcast struct {
-	transmits int       // btree-key[0]: 尝试传输的次数
-	msgLen    int64     // btree-key[1]: 消息长度len(b.Message())
-	id        int64     // btree-key[2]: 提交时的唯一的递增标识
-	B         Broadcast // 广播消息
-
-	name string // set if Broadcast is a NamedBroadcast
-}
-
-// Less 比较b 是不是小于 than
-// [[1,18],[1,16],[2,1],[2,1]]
-func (b *limitedBroadcast) Less(than btree.Item) bool {
-	o := than.(*limitedBroadcast)
-	if b.transmits < o.transmits {
-		return true
-	} else if b.transmits > o.transmits {
-		return false
-	}
-	if b.msgLen > o.msgLen {
-		return true
-	} else if b.msgLen < o.msgLen {
-		return false
-	}
-	return b.id > o.id
-}
+// -------------------------------------------- OK -----------------------------------------------
 
 // TransmitLimitedQueue
 // 用于对消息进行队列，以便(通过gossip)向集群广播，但限制每条消息的传输数量。它还对传输计数较低的消息(因此是较新的消息)进行优先级排序。
+
 type TransmitLimitedQueue struct {
 	// NumNodes 返回集群中的节点数。这用于确定根据此日志计算的重传计数。
 	NumNodes func() int
@@ -45,6 +21,122 @@ type TransmitLimitedQueue struct {
 	tq             *btree.BTree                 // stores *limitedBroadcast as btree.Item
 	tm             map[string]*limitedBroadcast // 节点 --> 广播消息
 	idGen          int64
+}
+
+// 添加消息，同时使存在的消息Finished
+func (q *TransmitLimitedQueue) queueBroadcast(b Broadcast, initialTransmits int) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	q.lazyInit()
+	// myself
+	switch b.(type) {
+	case *MemberlistBroadcast:
+	default:
+	}
+
+	if q.idGen == math.MaxInt64 {
+		//确保idGen不会超过MaxInt64,重置
+		q.idGen = 1
+	} else {
+		q.idGen++
+	}
+	id := q.idGen
+
+	lb := &limitedBroadcast{
+		transmits: initialTransmits, // 传输次数
+		msgLen:    int64(len(b.Message())),
+		id:        id,
+		B:         b,
+	}
+	unique := false
+	if nb, ok := b.(NamedBroadcast); ok {
+		var _ NamedBroadcast = &MemberlistBroadcast{}
+		lb.name = nb.Name()
+	} else if _, ok := b.(UniqueBroadcast); ok {
+		// UniqueBroadcast 没有具体实现
+		unique = true
+	}
+
+	// 检查这个消息是否使另一个消息无效。
+	if lb.name != "" {
+		// 判断
+		if old, ok := q.tm[lb.name]; ok {
+			old.B.Finished()
+			q.DeleteItem(old)
+		}
+	} else if !unique {
+		// lb.name == "" && unique == false
+		// 消息没有命名、且不是UniqueBroadcast的实现
+		// 有重复消息 干掉它们,返回结果
+		var remove []*limitedBroadcast
+		q.tq.Ascend(func(item btree.Item) bool {
+			cur := item.(*limitedBroadcast)
+			switch cur.B.(type) {
+			case NamedBroadcast:
+				// noop
+			case UniqueBroadcast:
+				// noop
+			default:
+				if b.Invalidates(cur.B) {
+					cur.B.Finished()
+					remove = append(remove, cur)
+				}
+			}
+			return true
+		})
+		for _, cur := range remove {
+			q.DeleteItem(cur)
+		}
+	}
+
+	//入队
+	q.addItem(lb)
+}
+
+// Prune 将保留maxRetain的最新信息，其余的将被丢弃。这可以用来防止无限制的队列广播大小
+func (q *TransmitLimitedQueue) Prune(maxRetain int) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for q.tq.Len() > maxRetain {
+		item := q.tq.Max()
+		if item == nil {
+			break
+		}
+		cur := item.(*limitedBroadcast)
+		cur.B.Finished()
+		q.DeleteItem(cur)
+	}
+}
+
+// lenLocked 返回BTree的长度
+func (q *TransmitLimitedQueue) lenLocked() int {
+	if q.tq == nil {
+		return 0
+	}
+	return q.tq.Len()
+}
+
+// Reset  清除所有消息，计数器清零，仅用于测试,清空 BTree 以及 map[string]*limitedBroadcast
+func (q *TransmitLimitedQueue) Reset() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	q.walkReadOnlyLocked(false, func(cur *limitedBroadcast) bool {
+		cur.B.Finished()
+		return true
+	})
+
+	q.tq = nil
+	q.tm = nil
+	q.idGen = 0
+}
+
+// NumQueued 返回入队的消息
+func (q *TransmitLimitedQueue) NumQueued() int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.lenLocked()
 }
 
 // lazyInit 初始化内部数据结构
@@ -57,7 +149,7 @@ func (q *TransmitLimitedQueue) lazyInit() {
 	}
 }
 
-// QueueBroadcast 广播消息入队
+// QueueBroadcast 广播消息入队,重试次数为0
 func (q *TransmitLimitedQueue) QueueBroadcast(b Broadcast) {
 	q.queueBroadcast(b, 0) // 初始重传次数为0
 }
@@ -107,93 +199,6 @@ func (q *TransmitLimitedQueue) walkReadOnlyLocked(reverse bool, f func(*limitedB
 	}
 }
 
-func (q *TransmitLimitedQueue) queueBroadcast(b Broadcast, initialTransmits int) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	q.lazyInit()
-	// myself
-	switch b.(type) {
-	case *MemberlistBroadcast:
-	default:
-	}
-
-	if q.idGen == math.MaxInt64 {
-		//确保idGen不会超过MaxInt64,重置
-		q.idGen = 1
-	} else {
-		q.idGen++
-	}
-	id := q.idGen
-
-	lb := &limitedBroadcast{
-		transmits: initialTransmits, // 传输次数
-		msgLen:    int64(len(b.Message())),
-		id:        id,
-		B:         b,
-	}
-	unique := false
-	if nb, ok := b.(NamedBroadcast); ok {
-		var _ NamedBroadcast = &MemberlistBroadcast{}
-		lb.name = nb.Name()
-	} else if _, ok := b.(UniqueBroadcast); ok {
-		unique = true
-	}
-
-	// 检查这个消息是否使另一个消息无效。
-	if lb.name != "" {
-		// 判断
-		if old, ok := q.tm[lb.name]; ok {
-			old.B.Finished()
-			q.deleteItem(old)
-		}
-	} else if !unique {
-		// lb.name == "" && unique == false
-		//
-		var remove []*limitedBroadcast
-		q.tq.Ascend(func(item btree.Item) bool {
-			cur := item.(*limitedBroadcast)
-
-			// Special Broadcasts can only invalidate each other.
-			switch cur.B.(type) {
-			case NamedBroadcast:
-				// noop
-			case UniqueBroadcast:
-				// noop
-			default:
-				if b.Invalidates(cur.B) {
-					cur.B.Finished()
-					remove = append(remove, cur)
-				}
-			}
-			return true
-		})
-		for _, cur := range remove {
-			q.deleteItem(cur)
-		}
-	}
-
-	//入队
-	q.addItem(lb)
-}
-
-// 返回消息树中重试次数的区间
-// 因为消息按照重试次数进行了排序
-func (q *TransmitLimitedQueue) getTransmitRange() (minTransmit, maxTransmit int) {
-	if q.lenLocked() == 0 {
-		return 0, 0
-	}
-	minItem, maxItem := q.tq.Min(), q.tq.Max()
-	if minItem == nil || maxItem == nil {
-		return 0, 0
-	}
-
-	min := minItem.(*limitedBroadcast).transmits
-	max := maxItem.(*limitedBroadcast).transmits
-
-	return min, max
-}
-
 // GetBroadcasts 是用来获取一些广播的，最多不超过一个字节的限制 并按规定应用每个消息的开销。
 // 获取limit长度以内【overhead计算在内】的任意节点可以发送的消息
 // 每条消息overheadbyte的开销
@@ -211,10 +216,10 @@ func (q *TransmitLimitedQueue) GetBroadcasts(overhead, limit int) [][]byte {
 
 	var _ = MemberlistBroadcast{}
 	var (
-		bytesUsed int // 消息体已占用的字节数
-		toSend    [][]byte // 需要发送的消息
+		bytesUsed int                 // 消息体已占用的字节数
+		toSend    [][]byte            // 需要发送的消息
 		reinsert  []*limitedBroadcast // 次数没超，需要重新添加到BTree的消息
-	//	获取<=指定大小的消息;如果该消息重试次数>transmitLimit,删除;否则需要重新添加到BTree
+		//	获取<=指定大小的消息;如果该消息重试次数>transmitLimit,删除;否则需要重新添加到BTree
 	)
 
 	// 返回消息树中重试次数的区间
@@ -261,7 +266,7 @@ func (q *TransmitLimitedQueue) GetBroadcasts(overhead, limit int) [][]byte {
 		bytesUsed += overhead + len(msg)
 		toSend = append(toSend, msg)
 		// 从BTree中删除该消息
-		q.deleteItem(keep)
+		q.DeleteItem(keep)
 
 		// 检查我们是否应该停止传输
 		// 可能因集群节点的变更，transmitLimit变小了，但是BTree中存在超过了该值的消息
@@ -288,57 +293,25 @@ func (q *TransmitLimitedQueue) GetBroadcasts(overhead, limit int) [][]byte {
 	return toSend
 }
 
-// NumQueued 返回入队的消息
-func (q *TransmitLimitedQueue) NumQueued() int {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	return q.lenLocked()
-}
-
-// lenLocked 返回BTree的长度
-func (q *TransmitLimitedQueue) lenLocked() int {
-	if q.tq == nil {
-		return 0
+// 返回消息树中重试次数的区间
+// 因为消息按照重试次数进行了排序
+func (q *TransmitLimitedQueue) getTransmitRange() (minTransmit, maxTransmit int) {
+	if q.lenLocked() == 0 {
+		return 0, 0
 	}
-	return q.tq.Len()
-}
-
-// Reset clears all the queued messages. Should only be used for tests.
-func (q *TransmitLimitedQueue) Reset() {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	q.walkReadOnlyLocked(false, func(cur *limitedBroadcast) bool {
-		cur.B.Finished()
-		return true
-	})
-
-	q.tq = nil
-	q.tm = nil
-	q.idGen = 0
-}
-
-// Prune will retain the maxRetain latest messages, and the rest
-// will be discarded. This can be used to prevent unbounded queue_broadcast sizes
-func (q *TransmitLimitedQueue) Prune(maxRetain int) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	// Do nothing if queue_broadcast size is less than the limit
-	for q.tq.Len() > maxRetain {
-		item := q.tq.Max()
-		if item == nil {
-			break
-		}
-		cur := item.(*limitedBroadcast)
-		cur.B.Finished()
-		q.deleteItem(cur)
+	minItem, maxItem := q.tq.Min(), q.tq.Max()
+	if minItem == nil || maxItem == nil {
+		return 0, 0
 	}
+
+	min := minItem.(*limitedBroadcast).transmits
+	max := maxItem.(*limitedBroadcast).transmits
+
+	return min, max
 }
 
-// -------------------------------------------- OK -----------------------------------------------
-// deleteItem 删除给定的项目。你必须已经持有该mutex。
-func (q *TransmitLimitedQueue) deleteItem(cur *limitedBroadcast) {
+// DeleteItem 删除给定的项目。你必须已经持有该mutex。
+func (q *TransmitLimitedQueue) DeleteItem(cur *limitedBroadcast) {
 	_ = q.tq.Delete(cur)
 	if cur.name != "" {
 		delete(q.tm, cur.name)
