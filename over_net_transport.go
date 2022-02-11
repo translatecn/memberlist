@@ -33,7 +33,7 @@ type NetTransportConfig struct {
 // NetTransport 是一个传输实现，使用无连接的UDP进行数据包操作，并使用临时的TCP连接进行流操作。
 type NetTransport struct {
 	config       *NetTransportConfig
-	packetCh     chan *Packet
+	packetCh     chan *Packet // 接收packet,并传输下发
 	StreamCh     chan net.Conn
 	Logger       *log.Logger
 	Wg           sync.WaitGroup
@@ -43,6 +43,39 @@ type NetTransport struct {
 }
 
 var _ NodeAwareTransport = (*NetTransport)(nil)
+
+// ----------------------------------------- OVER -------------------------------------------------
+
+// RecIngestPacket 仅用于测试
+func (t *NetTransport) RecIngestPacket(conn net.Conn, Addr net.Addr, now time.Time, shouldClose bool) error {
+	//RecIngestPacket(emptyConn, udp.LocalAddr(), time.Now(), true)
+	if shouldClose {
+		defer conn.Close()
+	}
+
+	// 从连接里读数据
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, conn); err != nil {
+		return fmt.Errorf("读包失败: %v", err)
+	}
+
+	if n := buf.Len(); n < 1 {
+		return fmt.Errorf("包太小(%d bytes) %s", n, pkg.LogAddress(Addr))
+	}
+
+	t.packetCh <- &Packet{
+		Buf:       buf.Bytes(),
+		From:      Addr,
+		Timestamp: now,
+	}
+	return nil
+}
+
+// IngestStream 注入流链接
+func (t *NetTransport) IngestStream(conn net.Conn) error {
+	t.StreamCh <- conn
+	return nil
+}
 
 // NewNetTransport 创建传输端点
 func NewNetTransport(config *NetTransportConfig) (*NetTransport, error) {
@@ -167,39 +200,13 @@ func (t *NetTransport) WriteToAddress(b []byte, a pkg.Address) (time.Time, error
 	if err != nil {
 		return time.Time{}, err
 	}
-	_, err = t.UdpListeners[0].WriteTo(b, udpAddr)// 使用第一个网卡发送
+	_, err = t.UdpListeners[0].WriteTo(b, udpAddr) // 使用第一个网卡发送
 	return time.Now(), err
 }
 
 // PacketCh 返回 packetCh
 func (t *NetTransport) PacketCh() <-chan *Packet {
 	return t.packetCh
-}
-
-func (t *NetTransport) RecIngestPacket(conn net.Conn, Addr net.Addr, now time.Time, shouldClose bool) error {
-	if shouldClose {
-		defer conn.Close()
-	}
-
-	// Copy everything from the stream into packet buffer.
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, conn); err != nil {
-		return fmt.Errorf("failed to read packet: %v", err)
-	}
-
-	// Check the length - it needs to have at least one byte to be a proper
-	// message. This is checked elsewhere for writes coming in directly from
-	// the UDP socket.
-	if n := buf.Len(); n < 1 {
-		return fmt.Errorf("packet too short (%d bytes) %s", n, pkg.LogAddress(Addr))
-	}
-
-	t.packetCh <- &Packet{
-		Buf:       buf.Bytes(),
-		From:      Addr,
-		Timestamp: now,
-	}
-	return nil
 }
 
 // DialTimeout 与a建联，设置了超时时间
@@ -218,14 +225,8 @@ func (t *NetTransport) DialAddressTimeout(a pkg.Address, timeout time.Duration) 
 
 // GetStreamCh 返回新建立的流连接
 func (t *NetTransport) GetStreamCh() <-chan net.Conn {
-	//net.go:912
+	//over_net.go:912
 	return t.StreamCh
-}
-
-// See IngestionAwareTransport.
-func (t *NetTransport) IngestStream(conn net.Conn) error {
-	t.StreamCh <- conn
-	return nil
 }
 
 // SetShutdown    .
@@ -277,7 +278,7 @@ func (t *NetTransport) TcpListen(tcpLn *net.TCPListener) {
 		}
 		// 没有错误，复位循环延迟
 		loopDelay = 0
-		//net.go:912
+		//over_net.go:912
 		t.StreamCh <- conn
 	}
 }
@@ -312,9 +313,7 @@ func (t *NetTransport) UdpListen(udpLn *net.UDPConn) {
 	}
 }
 
-// setUDPRecvBuf is used to resize the UDP receive window. The function
-// attempts to set the read buffer to `udpRecvBuf` but backs off until
-// the read buffer can be set.
+// 调整UDP接收窗口
 func setUDPRecvBuf(c *net.UDPConn) error {
 	size := udpRecvBufSize
 	var err error

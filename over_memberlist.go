@@ -79,6 +79,56 @@ type Members struct {
 	Logger *log.Logger
 }
 
+// ------------------------------------------ OVER ------------------------------------------------------------
+
+// Leave 将广播一个离开消息，但不会关闭后台监听器，这意味着该节点将继续参与八卦和状态更新。
+// 这将block，直到消息成功广播给集群中的成员（如果有的话）或达到指定的超时。
+//这个方法可以安全地多次调用，但不能在集群已经关闭后调用。在集群已经关闭之后。
+func (m *Members) Leave(timeout time.Duration) error {
+	m.leaveLock.Lock()
+	defer m.leaveLock.Unlock()
+
+	if m.hasSetShutdown() {
+		panic("在停止后离开")
+	}
+
+	if !m.hasLeft() {
+		atomic.StoreInt32(&m.leave, 1)
+		m.NodeLock.Lock()
+		state, ok := m.NodeMap[m.Config.Name]
+		m.NodeLock.Unlock()
+		if !ok {
+			m.Logger.Printf("[WARN] memberlist: Leave 但是自己不再NodeMap中.")
+			return nil
+		}
+
+		// 这个死亡信息很特别，因为Node和From是一样的。
+		// 这有助于其他节点弄清一个节点是故意离开的。
+		// 当Node等于From时，其他节点肯定知道这个节点已经离开了。
+		d := Dead{
+			Incarnation: state.Incarnation,
+			Node:        state.Name,
+			From:        state.Name,
+		}
+		m.DeadNode(&d)
+
+		// 存在任何活着的节点   阻止直到广播出去、或者超时
+		if m.anyAlive() {
+			var timeoutCh <-chan time.Time
+			if timeout > 0 {
+				timeoutCh = time.After(timeout)
+			}
+			select {
+			case <-m.LeaveBroadcast: // 已经广播出去了
+			case <-timeoutCh:
+				return fmt.Errorf("广播Leave超时")
+			}
+		}
+	}
+
+	return nil
+}
+
 // SetAlive 用于将此节点标记为活动节点。这就像我们自己的network channel收到一个Alive通知一样。
 func (m *Members) SetAlive() error {
 	Addr, port, err := m.RefreshAdvertise()
@@ -137,65 +187,6 @@ func (m *Members) NumMembers() (Alive int) {
 
 	return
 }
-
-// Leave will broadcast a leave message but will not Shutdown the background
-// listeners, meaning the node will continue participating in gossip and state
-// updates.
-//
-// This will block until the leave message is successfully broadcasted to
-// a member of the cluster, if any exist or until a specified timeout
-// is reached.
-//
-// This method is safe to call multiple times, but must not be called
-// after the cluster is already shut down.
-func (m *Members) Leave(timeout time.Duration) error {
-	m.leaveLock.Lock()
-	defer m.leaveLock.Unlock()
-
-	if m.hasSetShutdown() {
-		panic("在停止后离开")
-	}
-
-	if !m.hasLeft() {
-		atomic.StoreInt32(&m.leave, 1)
-
-		m.NodeLock.Lock()
-		state, ok := m.NodeMap[m.Config.Name]
-		m.NodeLock.Unlock()
-		if !ok {
-			m.Logger.Printf("[WARN] memberlist: Leave but we're not in the node map.")
-			return nil
-		}
-
-		// This Dead message is special, because Node and From are the
-		// same. This helps other Nodes figure out that a node left
-		// intentionally. When Node equals From, other Nodes know for
-		// sure this node is gone.
-		d := Dead{
-			Incarnation: state.Incarnation,
-			Node:        state.Name,
-			From:        state.Name,
-		}
-		m.DeadNode(&d)
-
-		// 阻止直到广播出去、或者超时
-		if m.anyAlive() {
-			var timeoutCh <-chan time.Time
-			if timeout > 0 {
-				timeoutCh = time.After(timeout)
-			}
-			select {
-			case <-m.LeaveBroadcast:
-			case <-timeoutCh:
-				return fmt.Errorf("timeout waiting for leave broadcast")
-			}
-		}
-	}
-
-	return nil
-}
-
-// ------------------------------------------ OVER ------------------------------------------------------------
 
 func (m *Members) hasSetShutdown() bool {
 	return atomic.LoadInt32(&m.Shutdown) == 1

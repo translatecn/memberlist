@@ -47,20 +47,13 @@ type Transport interface {
 	// 这通常比数据包连接更昂贵，所以用于更不频繁的操作，如反熵或在面向数据包的探测失败时进行回退探测。
 	DialTimeout(Addr string, timeout time.Duration) (net.Conn, error)
 
-	// StreamCh pull模式、返回一个通道，可以处理来自其他节点传入流连接。
+	// GetStreamCh pull模式、返回一个通道，可以处理来自其他节点传入流连接。
 	GetStreamCh() <-chan net.Conn
 
-	// Shutdown 停止、清理资源
+	// SetShutdown 停止、清理资源
 	SetShutdown() error
 }
 
-
-
-// IngestionAwareTransport is not used.
-//
-// Deprecated: IngestionAwareTransport is not used and may be removed in a future
-// version. Define the interface locally instead of referencing this exported
-// interface.
 type IngestionAwareTransport interface {
 	RecIngestPacket(conn net.Conn, Addr net.Addr, now time.Time, shouldClose bool) error
 	IngestStream(conn net.Conn) error
@@ -72,7 +65,6 @@ type NodeAwareTransport interface {
 	DialAddressTimeout(Addr pkg.Address, timeout time.Duration) (net.Conn, error)
 }
 
-// shim 垫片
 type ShimNodeAwareTransport struct {
 	Transport
 }

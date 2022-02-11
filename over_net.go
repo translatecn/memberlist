@@ -205,36 +205,9 @@ type msgHandoff struct {
 	from    net.Addr
 }
 
-// readUserMsg 从TCP流中解码UserMsg
-func (m *Members) readUserMsg(bufConn io.Reader, dec *codec.Decoder) error {
-	var header UserMsgHeader
-	if err := dec.Decode(&header); err != nil {
-		return err
-	}
+// ------------------------------------------ OVER ---------------------------------------
 
-	var userBuf []byte
-	if header.UserMsgLen > 0 {
-		userBuf = make([]byte, header.UserMsgLen)
-		bytes, err := io.ReadAtLeast(bufConn, userBuf, header.UserMsgLen)
-		if err == nil && bytes != header.UserMsgLen {
-			err = fmt.Errorf(
-				"读取完整的用户信息失败 (%d / %d)",
-				bytes, header.UserMsgLen)
-		}
-		if err != nil {
-			return err
-		}
-
-		d := m.Config.Delegate
-		if d != nil {
-			d.NotifyMsg(userBuf)
-		}
-	}
-
-	return nil
-}
-
-// SendPingAndWaitForAck 与给定的地址建立一个流连接，发送 Ping，并等待Ack。所有这些都是在给定的Deadline下，以一系列阻塞操作的方式完成的。
+// SendPingAndWaitForAck TCP与给定的地址建立一个流连接，发送 Ping，并等待Ack。所有这些都是在给定的Deadline下，以一系列阻塞操作的方式完成的。
 // 如果我们能够往返于Ping到另一个节点，则bool返回参数为true。
 func (m *Members) SendPingAndWaitForAck(a pkg.Address, ping Ping, Deadline time.Time) (bool, error) {
 	if a.Name == "" && m.Config.RequireNodeNames {
@@ -243,10 +216,7 @@ func (m *Members) SendPingAndWaitForAck(a pkg.Address, ping Ping, Deadline time.
 
 	conn, err := m.Transport.DialAddressTimeout(a, Deadline.Sub(time.Now()))
 	if err != nil {
-		// If the node is actually Dead we expect this to fail, so we
-		// shouldn't spam the logs with it. After this point, errors
-		// with the connection are real, unexpected errors and should
-		// get propagated up.
+		// 如果节点实际上是死的，我们希望它失败，所以我们不应该用它来扰乱日志。在这一点上，连接的错误是真实的、意外的错误，应该被传播出去。
 		return false, nil
 	}
 	defer conn.Close()
@@ -267,7 +237,7 @@ func (m *Members) SendPingAndWaitForAck(a pkg.Address, ping Ping, Deadline time.
 	}
 
 	if msgType != AckRespMsg {
-		return false, fmt.Errorf("Unexpected msgType (%d) from Ping %s", msgType, pkg.LogConn(conn))
+		return false, fmt.Errorf("未知的消息类型 (%d) from Ping %s", msgType, pkg.LogConn(conn))
 	}
 
 	var ack AckResp
@@ -276,13 +246,38 @@ func (m *Members) SendPingAndWaitForAck(a pkg.Address, ping Ping, Deadline time.
 	}
 
 	if ack.SeqNo != ping.SeqNo {
-		return false, fmt.Errorf("Sequence number from ack (%d) doesn't match Ping (%d)", ack.SeqNo, ping.SeqNo)
+		return false, fmt.Errorf("序列表 ack与ping  (%d)不匹配 (%d)", ack.SeqNo, ping.SeqNo)
 	}
 
 	return true, nil
 }
 
-// ------------------------------------------ OVER ---------------------------------------
+// readUserMsg 从TCP流中解码UserMsg
+func (m *Members) readUserMsg(bufConn io.Reader, dec *codec.Decoder) error {
+	var header UserMsgHeader
+	if err := dec.Decode(&header); err != nil {
+		return err
+	}
+
+	var userBuf []byte
+	if header.UserMsgLen > 0 {
+		userBuf = make([]byte, header.UserMsgLen)
+		bytes, err := io.ReadAtLeast(bufConn, userBuf, header.UserMsgLen)
+		if err == nil && bytes != header.UserMsgLen {
+			err = fmt.Errorf("读取完整的用户信息失败 (%d / %d)", bytes, header.UserMsgLen)
+		}
+		if err != nil {
+			return err
+		}
+
+		d := m.Config.Delegate
+		if d != nil {
+			d.NotifyMsg(userBuf)
+		}
+	}
+
+	return nil
+}
 
 // encodeAndSendMsg 编码并发送消息
 func (m *Members) encodeAndSendMsg(a pkg.Address, msgType MessageType, msg interface{}) error {

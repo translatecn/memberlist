@@ -63,7 +63,7 @@ func ShuffleNodes(nodes []*NodeState) {
 	})
 }
 
-// push\pull 间隔，需要随着集群规模变化。避免集群增大，网络阻塞
+// PushPullScale push\pull 间隔，需要随着集群规模变化。避免集群增大，网络阻塞
 func PushPullScale(interval time.Duration, n int) time.Duration {
 	// 节点数小于32个,时间不变
 	if n <= PushPullScaleThreshold {
@@ -200,7 +200,7 @@ func DecodeCompoundMessage(buf []byte) (trunc int, parts [][]byte, err error) {
 	return
 }
 
-// 压缩
+// CompressPayload  压缩
 func CompressPayload(inp []byte) (*bytes.Buffer, error) {
 	var buf bytes.Buffer
 	Compressor := lzw.NewWriter(&buf, lzw.LSB, lzwLitWidth)

@@ -404,7 +404,7 @@ func (m *Members) SuspectNode(s *Suspect) {
 	m.NodeTimers[s.Node] = newSuspicion(s.From, k, min, max, fn)
 }
 
-// DeadNode OK
+// DeadNode OK 广播某个节点Dead
 func (m *Members) DeadNode(d *Dead) {
 	m.NodeLock.Lock()
 	defer m.NodeLock.Unlock()
@@ -425,7 +425,7 @@ func (m *Members) DeadNode(d *Dead) {
 		return
 	}
 
-	if state.Name == m.Config.Name {
+	if state.Name == m.Config.Name {// 是自己
 		// 如果我们不离开，我们需要反驳
 		if !m.hasLeft() {
 			m.Refute(state, d.Incarnation)
@@ -442,8 +442,7 @@ func (m *Members) DeadNode(d *Dead) {
 	state.Incarnation = d.Incarnation
 
 	// 如果死亡信息是由节点自己发送的，则将其标记为Left，而不是死亡。
-	// TODO 这没有很明白
-	if d.Node == d.From {
+	if d.Node == d.From { // 是不是由自己发出的
 		state.State = StateLeft
 	} else {
 		state.State = StateDead

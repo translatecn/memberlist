@@ -107,7 +107,7 @@ func (m *Members) handleConn(conn net.Conn) {
 			m.Logger.Printf("[错误] memberlist: Failed push/pull merge: %s %s", err, pkg.LogConn(conn))
 			return
 		}
-	case PingMsg:
+	case PingMsg: // ✅ ,使用TCP 接收ping消息
 		var p Ping
 		if err := dec.Decode(&p); err != nil {
 			m.Logger.Printf("[错误] memberlist: Failed to Decode Ping: %s %s", err, pkg.LogConn(conn))
@@ -191,13 +191,13 @@ func (m *Members) sendAndReceiveState(a pkg.Address, join bool) ([]PushNodeState
 	m.Logger.Printf("[DEBUG] memberlist: 初始化 push/pull 同步和: %s %s", a.Name, conn.RemoteAddr())
 
 	// 发送自身状态,发送数据本身也设置了 TCP Timeout
-	// net.go:234 ReadStream
+	// over_net.go:234 ReadStream
 	if err := m.sendLocalState(conn, join, m.Config.Label); err != nil {
 		return nil, nil, err
 	}
 	//sendLocalState、ReadStream 一个发、一个收
 	conn.SetDeadline(time.Now().Add(m.Config.TCPTimeout))
-	//net.go:276 sendLocalState
+	//over_net.go:276 sendLocalState
 	msgType, bufConn, dec, err := m.ReadStream(conn, m.Config.Label)
 	if err != nil {
 		return nil, nil, err
