@@ -43,7 +43,7 @@ type Config struct {
 	TCPTimeout time.Duration
 
 	// IndirectChecks
-	//todo 在直接探测失败的情况下，将请求执行对节点的间接探测的节点数。
+	// 在直接探测失败的情况下，间接探测的节点数
 	IndirectChecks int
 
 	// RetransmitMult 是对通过gossip广播的信息尝试重传的倍数。实际的重传次数是用公式计算的。

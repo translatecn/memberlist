@@ -8,6 +8,96 @@ import (
 	"time"
 )
 
+// SuspectNode 质疑节点
+// 1、ping 失败
+// 2、收到了质疑消息
+// 3、状态合并时，看到某个节点处于质疑状态
+func (m *Members) SuspectNode(s *Suspect) {
+	m.NodeLock.Lock()
+	defer m.NodeLock.Unlock()
+	state, ok := m.NodeMap[s.Node]
+
+	if !ok {
+		return
+	}
+
+	if s.Incarnation < state.Incarnation {
+		// 过期的质疑消息
+		return
+	}
+
+	// 看看是否有一个我们可以确认的嫌疑犯计时器。如果信息对我们来说是新的，我们将继续前进并重新发送。
+	// 这允许多个独立的确认流动，甚至当一个节点探测一个已经有嫌疑的节点时。
+	if timer, ok := m.NodeTimers[s.Node]; ok {
+		// 从From发出的对s.Node的质疑
+		// 初始不存在
+		_=m.AliveNode
+		_=m.DeadNode // 都有可能清空该timer
+		if timer.Confirm(s.From) {// 再次从s.From 收到了 s.Node 的质疑
+			m.EncodeBroadcast(s.Node, SuspectMsg, s)
+		}
+		return
+	}
+
+	if state.State != StateAlive {
+		return
+	}
+
+	if state.Name == m.Config.Name {
+		// 自己
+		m.Refute(state, s.Incarnation) // 广播自己存活的消息
+		m.Logger.Printf("[WARN] memberlist: 反驳质疑消息 (from: %s)", s.From)
+		return
+	} else {
+		m.EncodeBroadcast(s.Node, SuspectMsg, s)// 广播质疑消息
+	}
+
+	// 更新状态
+	state.Incarnation = s.Incarnation
+	state.State = StateSuspect
+	changeTime := time.Now()
+	state.StateChange = changeTime
+
+	// Setup a Suspicion timer. Given that we don't have any known phase
+	// relationship with our peers, we set up k such that we hit the nominal
+	// timeout two probe intervals short of what we expect given the Suspicion
+	// multiplier.
+	// 设置一个嫌疑犯计时器。鉴于我们与同伴之间没有任何已知的相位关系，我们设置k，使我们在给定的怀疑乘数下，差两个探针间隔就能达到额定超时。
+	k := m.Config.SuspicionMult - 2 // 4-2
+
+	// If there aren't enough Nodes to give the expected confirmations, just
+	// set k to 0 to say that we don't expect any. Note we subtract 2 from n
+	// here to take out ourselves and the node being probed.
+	// 如果没有足够的节点给予预期的确认，就把k设置为0，表示我们不期待任何确认。注意，我们在这里从n中减去2，以除去我们自己和被探测的节点。
+	n := m.EstNumNodes()
+	if n-2 < k {
+		k = 0
+	}
+
+	// Compute the timeouts based on the size of the cluster.
+	min := SuspicionTimeout(m.Config.SuspicionMult, n, m.Config.ProbeInterval)
+	max := time.Duration(m.Config.SuspicionMaxTimeoutMult) * min
+	fn := func(numConfirmations int) { // 超时 时收到的确认数
+		var d *Dead
+		// 设置节点质疑，一段时间后 如果节点状态没变，将广播该节点死亡
+		m.NodeLock.Lock()
+		state, ok := m.NodeMap[s.Node]
+		timeout := ok && state.State == StateSuspect && state.StateChange == changeTime
+		if timeout {
+			d = &Dead{Incarnation: state.Incarnation, Node: state.Name, From: m.Config.Name}
+		}
+		m.NodeLock.Unlock()
+
+		if timeout {
+			m.Logger.Printf("[INFO] memberlist: Marking %s as failed, Suspect timeout reached (%d peer confirmations)",
+				state.Name, numConfirmations)
+
+			m.DeadNode(d)
+		}
+	}
+	m.NodeTimers[s.Node] = newSuspicion(s.From, k, min, max, fn)
+}
+
 // ----------------------------------------- OK -------------------------------------------------
 
 // LocalNode 返回本机的Node结构体信息
@@ -92,7 +182,7 @@ func (m *Members) GetNodeStateChange(Addr string) time.Time {
 	return n.StateChange
 }
 
-// ChangeNode OK
+// ChangeNode OK 用于测试
 func (m *Members) ChangeNode(Addr string, f func(*NodeState)) {
 	m.NodeLock.Lock()
 	defer m.NodeLock.Unlock()
@@ -323,87 +413,6 @@ func (m *Members) AliveNode(a *Alive, notify chan struct{}, bootstrap bool) {
 	}
 }
 
-// SuspectNode TODO
-func (m *Members) SuspectNode(s *Suspect) {
-	m.NodeLock.Lock()
-	defer m.NodeLock.Unlock()
-	state, ok := m.NodeMap[s.Node]
-
-	if !ok {
-		return
-	}
-
-	if s.Incarnation < state.Incarnation {
-		return
-	}
-
-	// See if there's a Suspicion timer we can confirm. If the info is new
-	// to us we will go ahead and re-gossip it. This allows for multiple
-	// independent confirmations to flow even when a node probes a node
-	// that's already Suspect.
-	if timer, ok := m.NodeTimers[s.Node]; ok {
-		if timer.Confirm(s.From) {
-			m.EncodeBroadcast(s.Node, SuspectMsg, s)
-		}
-		return
-	}
-
-	if state.State != StateAlive {
-		return
-	}
-
-	if state.Name == m.Config.Name {
-		m.Refute(state, s.Incarnation)
-		m.Logger.Printf("[WARN] memberlist: 反驳质疑消息 (from: %s)", s.From)
-		return
-	} else {
-		m.EncodeBroadcast(s.Node, SuspectMsg, s)
-	}
-
-	// Update the state
-	state.Incarnation = s.Incarnation
-	state.State = StateSuspect
-	changeTime := time.Now()
-	state.StateChange = changeTime
-
-	// Setup a Suspicion timer. Given that we don't have any known phase
-	// relationship with our peers, we set up k such that we hit the nominal
-	// timeout two probe intervals short of what we expect given the Suspicion
-	// multiplier.
-	k := m.Config.SuspicionMult - 2
-
-	// If there aren't enough Nodes to give the expected confirmations, just
-	// set k to 0 to say that we don't expect any. Note we subtract 2 from n
-	// here to take out ourselves and the node being probed.
-	n := m.EstNumNodes()
-	if n-2 < k {
-		k = 0
-	}
-
-	// Compute the timeouts based on the size of the cluster.
-	min := SuspicionTimeout(m.Config.SuspicionMult, n, m.Config.ProbeInterval)
-	max := time.Duration(m.Config.SuspicionMaxTimeoutMult) * min
-	fn := func(numConfirmations int) {
-		var d *Dead
-
-		m.NodeLock.Lock()
-		state, ok := m.NodeMap[s.Node]
-		timeout := ok && state.State == StateSuspect && state.StateChange == changeTime
-		if timeout {
-			d = &Dead{Incarnation: state.Incarnation, Node: state.Name, From: m.Config.Name}
-		}
-		m.NodeLock.Unlock()
-
-		if timeout {
-			m.Logger.Printf("[INFO] memberlist: Marking %s as failed, Suspect timeout reached (%d peer confirmations)",
-				state.Name, numConfirmations)
-
-			m.DeadNode(d)
-		}
-	}
-	m.NodeTimers[s.Node] = newSuspicion(s.From, k, min, max, fn)
-}
-
 // DeadNode OK 广播某个节点Dead
 func (m *Members) DeadNode(d *Dead) {
 	m.NodeLock.Lock()
@@ -425,7 +434,7 @@ func (m *Members) DeadNode(d *Dead) {
 		return
 	}
 
-	if state.Name == m.Config.Name {// 是自己
+	if state.Name == m.Config.Name { // 是自己
 		// 如果我们不离开，我们需要反驳
 		if !m.hasLeft() {
 			m.Refute(state, d.Incarnation)

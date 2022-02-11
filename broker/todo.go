@@ -61,6 +61,7 @@ func mai3n() {
 func main() {
 	bt()
 	ns()
+	timer()
 }
 
 type A struct {
@@ -91,4 +92,15 @@ func ns() {
 	for _, item := range res {
 		fmt.Println(item.String())
 	}
+}
+
+func timer() {
+	a := func() {
+		fmt.Println(123)
+	}
+	timer := time.AfterFunc(time.Second*3, a)
+	fmt.Println("======", timer.Stop())
+	time.Sleep(time.Second * 4)
+	timer.Stop()
+	fmt.Println("======", timer.Stop())
 }

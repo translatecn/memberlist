@@ -38,94 +38,40 @@ memberlist 最困难的部分是配置它，因为它有许多可用的旋钮来
 associated [Godoc](http://godoc.org/github.com/hashicorp/memberlist).
 
 ``` 
-UDP gossip 
-TCP push/pull
-Refute gossip
-```
+UDP
+    收包、PING
 
-### Node Change
-
-```
-
-StateAlive 
-    m.AliveNode         某节点存活
-StateLeft
-    m.DeadNode          节点死亡
-StateDead
-    m.SuspectNode       质疑节点是否真的Dead
-StateSuspect
-    m.SuspectNode
+TCP 
+    PING、状态同步【push/pull】
+----------
+pull、push
+ping       
+gossip     UDP定时将Broadcast发送到不同的节点
+Suspect    Suspicion--->Broadcast SuspectMsg [一旦收到来通节点的质疑消息数大于上限后] ---> Broadcast DeadMsg
+ProbeNode  Ping--->IndrectPing--->TCPPing--->Suspect
 
 ```
 
-```
-m.gossip
-m.PushPull
-m.probeNode
+### Gossip
+``` Broadcast
+    会定时同步消息
+    类似,多条消息会合并
+    // a 1,2,3,4
+	// 1 --> b
+	// 2 --> c
+	// 3 --> d
 ```
 
 ### Join
-
 ```
-sendAndReceiveState()
----> 
-    buf = PushPullMsg (1 byte) + PushPullHeader + localNodes + userData
-    
-    sendBuf = CompressMsg (1 byte) + buf
-    
-    sendBuf = EncryptMsg (1 byte) + messageLength (4 byte) + sendBuf + stream_Label (optional)
-    
-            
-    
-    
-另外:如果有Label
-    HasLabelMsg (1 byte) + LabelSize (1 byte) +  LabelData (LabelSize byte) + sendBuf
-    
-UDP 
-    HasLabelMsg (1 byte) + LabelSize (1 byte) +  LabelData (LabelSize byte) + sendBuf
-    ----->  sendBuf 通过 私钥、label 解密
-    buf = HasCrcMsg (1 byte) + crcSum(4 byte) + msgType(1 byte) + msg
-    
-    
-    
-    msg:
-        CompoundMsg + len(msgs) uint8 + 每个消息的长度uint16 + 每个消息
-    
-    
-```
+Join是建立的TCP链接
+以AliveMsg为例
+当某节点Create以后,就调用了 AliveNode ,将alive消息放入到了Btree等待广播
+加入集群
+等待Gossip超时,将信息，随机发往某个节点
 
-```
-streamLabel 只有在 HasLabelMsg 类型下有
+也就是某个节点的alive信息会一直在集群中传输,最早将这个信息放进来的是这个节点本身;另外当自己收到质疑消息，也会发送存活消息
 
-
-
-
-
-PingMsg
-PushPullMsg
-    -   join 时触发
-UserMsg
-```
-
-### issue
-
-1、StateDead与StateLeft的区别
-
-2、广播出去的包，server怎么处理
-
-BTree
-
-```
-tq.Max
-tq.Len
-tq.Delete
-tq.AscendRange
-tq.Ascend   按照升序遍历
-tq.Descend  按照将序遍历
-
-```
-
-``` Broadcast
 c:
     AliveNode                           |<--   Gossip()      定时广播到随机的机器
     DeadNode          ------> Btree  ---|      在主动发包到某个节点的过程中，填充额外的信息
@@ -142,51 +88,46 @@ s:
             HandleCommand
                 handlePing
                 handleIndirectPing
-                
-    
-
-    
-    
-    
-    
 AliveMsg:
     AliveNode  
     Refute    都是将自己还活着的消息存入到BTree中
     等待handlePing、handleIndirectPing、ProbeNode调用; 将BTree中的数据发送到一台指定的机器
     
-Gossip
-    会定时同步消息
-    类似,多条消息会合并
-    // a 1,2,3,4
-	// 1 --> b
-	// 2 --> c
-	// 3 --> d
+```
+
+### 消息格式
+```
+sendAndReceiveState()
+---> 
+    buf = PushPullMsg (1 byte) + PushPullHeader + localNodes + userData
     
-
-Join是建立的TCP链接
-
-
-以AliveMsg为例
-当某节点Create以后,就调用了 AliveNode ,将alive消息放入到了Btree等待广播
-加入集群
-等待Gossip超时,将信息，随机发往某个节点
-
-也就是某个节点的alive信息会一直在集群中传输,最早将这个信息放进来的是这个节点本身
-
-
-
-UserMsg:
-c:
-    SendUserMsg
-    SendToAddress
-    SendBestEffort
-    SendToUDP
-    以及配置了 m.Config.Delegate.GetBroadcasts   任何一个可以广播的行为
+    sendBuf = CompressMsg (1 byte) + buf
     
-    程序本身没有发送UserMsg
+    sendBuf = EncryptMsg (1 byte) + messageLength (4 byte) + sendBuf + stream_Label (optional)
+另外:如果有Label
+    HasLabelMsg (1 byte) + LabelSize (1 byte) +  LabelData (LabelSize byte) + sendBuf
+    
+UDP 
+    HasLabelMsg (1 byte) + LabelSize (1 byte) +  LabelData (LabelSize byte) + sendBuf
+    ----->  sendBuf 通过 私钥、label 解密
+    buf = HasCrcMsg (1 byte) + crcSum(4 byte) + msgType(1 byte) + msg
+    
+    msg:
+        CompoundMsg + len(msgs) uint8 + 每个消息的长度uint16 + 每个消息
+    
+```
 
+```
+streamLabel 只有在 HasLabelMsg 类型下有
+PingMsg
+PushPullMsg
+    -   join 时触发
+UserMsg
+```
 
-周期性的向每个节点发送pingMsg
+### ping
+```
+周期性的向每个节点发送 pingMsg
     a (ProbeNode)--->1、PingMsg---> b(handlePing) --->3、IndirectPingReq ---> c(handleIndirectPing)
         ↑                               ↓          |->3、IndirectPingReq ---> d(handleIndirectPing)
         ↑                               ↓          |->3、IndirectPingReq ---> d(handleIndirectPing)
@@ -198,3 +139,45 @@ c:
        --->SuspectNode
 
 ```
+
+
+
+```
+UserMsg:
+c:
+    SendUserMsg
+    SendToAddress
+    SendBestEffort
+    SendToUDP
+    以及配置了 m.Config.Delegate.GetBroadcasts   任何一个可以广播的行为
+    程序本身没有发送UserMsg
+```
+
+
+
+
+### issue
+
+1、StateDead与StateLeft的区别
+
+    StateLeft: 将广播一个Leave消息，但不会关闭listeners，这意味着该节点将继续参与gossip和状态更新。
+    
+
+
+2、广播出去的包，server怎么处理
+
+    每个UDP链接都有一个listen函数  UdpListen ,用于处理接收到的包
+
+3、BTree
+
+    ```
+    tq.Max
+    tq.Len
+    tq.Delete
+    tq.AscendRange
+    tq.Ascend   按照升序遍历
+    tq.Descend  按照将序遍历
+    
+    ```
+
+

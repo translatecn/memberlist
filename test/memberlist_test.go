@@ -1371,7 +1371,7 @@ func TestMemberlist_SendTo(t *testing.T) {
 		IP:   Addr2,
 		Port: bindPort,
 	}
-	m2Address := memberlist.Address{
+	m2Address := pkg.Address{
 		Addr: m2Addr.String(),
 		Name: m2.Config.Name,
 	}
@@ -1383,7 +1383,7 @@ func TestMemberlist_SendTo(t *testing.T) {
 		IP:   net.ParseIP(m1.Config.BindAddr),
 		Port: bindPort,
 	}
-	m1Address := memberlist.Address{
+	m1Address := pkg.Address{
 		Addr: m1Addr.String(),
 		Name: m1.Config.Name,
 	}

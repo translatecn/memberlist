@@ -9,10 +9,13 @@ import (
 // Suspicion 管理节点的可疑计时器，并提供一个接口，当我们获得更多关于节点可疑的独立确认时，可以加速超时。
 type Suspicion struct {
 	// N是我们看到的独立确认的数量。这必须使用原子指令更新，以防止与定时器回调争用。
-	n int32
+	// 收到的质疑数
+
+	SuspectAcceptNum int32
 
 	// K是我们希望看到的独立确认的数量，以便将计时器驱动到它的最小值。
-	k int32
+	// 质疑数上限,一旦超过设置dead
+	SuspectMax int32 // 一般情况下是2
 
 	// min 定时器最小值
 	min time.Duration
@@ -33,47 +36,34 @@ type Suspicion struct {
 	confirmations map[string]struct{}
 }
 
-// newSuspicion returns a timer started with the max time, and that will drive
-// to the min time after seeing k or more confirmations. The from node will be
-// excluded from confirmations since we might get our own Suspicion message
-// gossiped back to us. The minimum time will be used if no confirmations are
-// called for (k <= 0).
+// newSuspicion 返回一个从最大时间开始的定时器，在看到k个或更多的确认信息后，该定时器将驱动到最小时间。
+// 从节点将被排除在确认之外，因为我们可能会得到我们自己的怀疑消息的流言蜚语。如果没有要求确认，将使用最小时间（k <= 0）。
 func newSuspicion(from string, k int, min time.Duration, max time.Duration, fn func(int)) *Suspicion {
 	s := &Suspicion{
-		k:             int32(k),
+		SuspectMax:             int32(k), // 一般是2
 		min:           min,
 		max:           max,
 		confirmations: make(map[string]struct{}),
 	}
 
-	// Exclude the from node from any confirmations.
 	s.confirmations[from] = struct{}{}
 
-	// Pass the number of confirmations into the timeout function for
-	// easy telemetry.
+	// 将确认次数传入超时功能，便于遥测。
 	s.timeoutFn = func() {
-		fn(int(atomic.LoadInt32(&s.n)))
+		fn(int(atomic.LoadInt32(&s.SuspectAcceptNum))) // 超时了，发布dead消息
 	}
 
-	// If there aren't any confirmations to be made then take the min
-	// time from the start.
 	timeout := max
 	if k < 1 {
 		timeout = min
 	}
 	s.timer = time.AfterFunc(timeout, s.timeoutFn)
 
-	// Capture the start time right after starting the timer above so
-	// we should always err on the side of a little longer timeout if
-	// there's any preemption that separates this and the step above.
 	s.start = time.Now()
 	return s
 }
 
-// remainingSuspicionTime takes the state variables of the Suspicion timer and
-// calculates the remaining time to wait before considering a node Dead. The
-// return value can be negative, so be prepared to fire the timer immediately in
-// that case.
+// remainingSuspicionTime 返回在考虑一个节点死亡之前的剩余等待时间。
 func remainingSuspicionTime(n, k int32, elapsed time.Duration, min, max time.Duration) time.Duration {
 	frac := math.Log(float64(n)+1.0) / math.Log(float64(k)+1.0)
 	raw := max.Seconds() - frac*(max.Seconds()-min.Seconds())
@@ -90,27 +80,26 @@ func remainingSuspicionTime(n, k int32, elapsed time.Duration, min, max time.Dur
 // Confirm 注册一个可能的新同行也确定给定节点是可疑的。
 // 如果这是新的信息，则返回true；如果是重复的确认，则返回false；如果我们已经有足够的确认来达到最低限度。
 func (s *Suspicion) Confirm(from string) bool {
-	// If we've got enough confirmations then stop accepting them.
-	if atomic.LoadInt32(&s.n) >= s.k {
+	// 如果我们有足够的确认，那么就停止接受它们。
+	if atomic.LoadInt32(&s.SuspectAcceptNum) >= s.SuspectMax {
 		return false
 	}
 
-	// Only allow one confirmation from each possible peer.
+	// 只允许每个可能的对等体进行一次确认。
 	if _, ok := s.confirmations[from]; ok {
 		return false
 	}
-	s.confirmations[from] = struct{}{}
+	// 记录
+	s.confirmations[from] = struct{}{}// 又收到了来自其他节点的对目标节点的质疑
 
-	// Compute the new timeout given the current number of confirmations and
-	// adjust the timer. If the timeout becomes negative *and* we can cleanly
-	// stop the timer then we will call the timeout function directly from
-	// here.
-	n := atomic.AddInt32(&s.n, 1)
-	elapsed := time.Since(s.start)
-	remaining := remainingSuspicionTime(n, s.k, elapsed, s.min, s.max)
-	if s.timer.Stop() {
+	// 考虑到当前的确认数，计算新的超时时间，并调整计时器。如果超时变成了负值，*并且我们可以干净地停止计时器，那么我们将从这里直接调用超时函数。
+	n := atomic.AddInt32(&s.SuspectAcceptNum, 1)
+	elapsed := time.Since(s.start) // 耗时
+	//剩余的的质疑时间
+	remaining := remainingSuspicionTime(n, s.SuspectMax, elapsed, s.min, s.max)
+	if s.timer.Stop() { // 停止计时器，返回有没有停止成功，停止后，返回false
 		if remaining > 0 {
-			s.timer.Reset(remaining)
+			s.timer.Reset(remaining) // 收到消息后，重置重试时间
 		} else {
 			go s.timeoutFn()
 		}

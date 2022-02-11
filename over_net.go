@@ -136,12 +136,10 @@ type NAckResp struct {
 	SeqNo uint32
 }
 
-// err response is sent to relay the error from the remote end
 type errResp struct {
 	Error string
 }
 
-// Suspect is broadcast when we Suspect a node is Dead
 type Suspect struct {
 	Incarnation uint32
 	Node        string

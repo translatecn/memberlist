@@ -83,7 +83,7 @@ type Members struct {
 
 // Leave 将广播一个离开消息，但不会关闭后台监听器，这意味着该节点将继续参与八卦和状态更新。
 // 这将block，直到消息成功广播给集群中的成员（如果有的话）或达到指定的超时。
-//这个方法可以安全地多次调用，但不能在集群已经关闭后调用。在集群已经关闭之后。
+// 这个方法可以安全地多次调用，但不能在集群已经关闭后调用。在集群已经关闭之后。
 func (m *Members) Leave(timeout time.Duration) error {
 	m.leaveLock.Lock()
 	defer m.leaveLock.Unlock()
