@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// OK
 func TestAddLabelHeaderToPacket(t *testing.T) {
 	type testcase struct {
 		buf          []byte
@@ -72,6 +73,7 @@ func TestAddLabelHeaderToPacket(t *testing.T) {
 	}
 }
 
+// OK
 func TestRemoveLabelHeaderFromPacket(t *testing.T) {
 	type testcase struct {
 		buf          []byte
@@ -153,6 +155,7 @@ func TestRemoveLabelHeaderFromPacket(t *testing.T) {
 	}
 }
 
+// OK
 func TestAddLabelHeaderToStream(t *testing.T) {
 	type testcase struct {
 		Label      string
@@ -160,7 +163,7 @@ func TestAddLabelHeaderToStream(t *testing.T) {
 		expectErr  string
 	}
 
-	suffixData := "EXTRA DATA"
+	suffixData := "EXTRA DATA" // 后缀数据
 
 	run := func(t *testing.T, tc testcase) {
 		server, client := net.Pipe()
@@ -192,7 +195,7 @@ func TestAddLabelHeaderToStream(t *testing.T) {
 		client.Close()
 
 		expect := make([]byte, 0, len(suffixData)+len(tc.expectData))
-		expect = append(expect, tc.expectData...)
+		expect = append(expect, tc.expectData...) //expectData == label header
 		expect = append(expect, suffixData...)
 
 		select {
@@ -231,6 +234,7 @@ func TestAddLabelHeaderToStream(t *testing.T) {
 	}
 }
 
+// OK
 func TestRemoveLabelHeaderFromStream(t *testing.T) {
 	type testcase struct {
 		buf         []byte
@@ -358,6 +362,7 @@ func buildBuffer(t *testing.T, stuff ...interface{}) []byte {
 	return buf.Bytes()
 }
 
+// OK
 func TestLabelOverhead(t *testing.T) {
 	require.Equal(t, 0, memberlist.LabelOverhead(""))
 	require.Equal(t, 3, memberlist.LabelOverhead("a"))

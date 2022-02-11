@@ -16,14 +16,13 @@ import (
 // LabelMaxSize 包、流  标签的最大长度
 const LabelMaxSize = 255
 
-// AddLabelHeaderToPacket prefixes outgoing packets with the correct header if
-// the Label is not empty.
+// AddLabelHeaderToPacket 如果Label不是空的，则用正确的标头对流出的数据包进行前缀。
 func AddLabelHeaderToPacket(buf []byte, Label string) ([]byte, error) {
 	if Label == "" {
 		return buf, nil
 	}
 	if len(Label) > LabelMaxSize {
-		return nil, fmt.Errorf("Label %q is too long", Label)
+		return nil, fmt.Errorf("标签 %q is 太长", Label)
 	}
 
 	return makeLabelHeader(Label, buf), nil
@@ -60,14 +59,13 @@ func RemoveLabelHeaderFromPacket(buf []byte) (newBuf []byte, Label string, err e
 	return newBuf, Label, nil
 }
 
-// AddLabelHeaderToStream prefixes outgoing streams with the correct header if
-// the Label is not empty.
+// AddLabelHeaderToStream 用正确的标头对流出的流进行前缀，如果 标签不是空的。
 func AddLabelHeaderToStream(conn net.Conn, Label string) error {
 	if Label == "" {
 		return nil
 	}
 	if len(Label) > LabelMaxSize {
-		return fmt.Errorf("Label %q is too long", Label)
+		return fmt.Errorf("标签 %q is too long", Label)
 	}
 
 	header := makeLabelHeader(Label, nil)
@@ -141,6 +139,7 @@ func newPeekedConnFromBufferedReader(conn net.Conn, br *bufio.Reader, offset int
 	}, nil
 }
 
+// HasLabelMsg + len + data
 func makeLabelHeader(Label string, rest []byte) []byte {
 	newBuf := make([]byte, 2, 2+len(Label)+len(rest))
 	newBuf[0] = byte(HasLabelMsg)

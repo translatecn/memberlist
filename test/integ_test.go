@@ -43,7 +43,7 @@ func TestMemberlist_Integ(t *testing.T) {
 		c.Logger = log.New(os.Stderr, c.Name, log.LstdFlags)
 
 		if i == 0 {
-			c.Events = &memberlist.ChannelEventDelegate{eventCh}
+			c.Events = &memberlist.ChannelEventDelegate{Ch: eventCh}
 		}
 
 		m, err := memberlist.Create(c)
