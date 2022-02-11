@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/hashicorp/memberlist"
+	"github.com/hashicorp/memberlist/pkg"
 	"io"
 	"log"
 	"net"
@@ -280,7 +281,7 @@ func TestTCPPing(t *testing.T) {
 		t.Fatalf("no tcp listener")
 	}
 
-	tcpAddr2 := memberlist.Address{Addr: tcpAddr.String(), Name: "test"}
+	tcpAddr2 := pkg.Address{Addr: tcpAddr.String(), Name: "test"}
 
 	// Note that tcp gets closed in the last test, so we avoid a deferred
 	// Close() call here.
@@ -726,7 +727,7 @@ func TestRawSendUdp_CRC(t *testing.T) {
 	udp := listenUDP(t)
 	defer udp.Close()
 
-	a := memberlist.Address{
+	a := pkg.Address{
 		Addr: udp.LocalAddr().String(),
 		Name: "test",
 	}
@@ -787,7 +788,7 @@ func TestIngestPacket_CRC(t *testing.T) {
 	udp := listenUDP(t)
 	defer udp.Close()
 
-	a := memberlist.Address{
+	a := pkg.Address{
 		Addr: udp.LocalAddr().String(),
 		Name: "test",
 	}

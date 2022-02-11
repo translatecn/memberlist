@@ -326,7 +326,7 @@ func (m *Members) ResolveAddr(hostStr string) ([]pkg.IpPort, error) {
 }
 
 // Join  加入（Join）是用来获取一个现有的成员，并试图通过联系所有给定的主机和执行状态同步来加入一个集群。
-// 最初，成员只包含我们自己的状态，所以这样做将导致远程节点意识到这个节点的存在，有效地加入集群。
+// 最初，成员只包含我们自己的状态，所以这样做将导致远程节点警觉到这个节点的存在，有效地加入集群。
 // 这将返回成功联系到的主机的数量，如果没有联系到，则返回错误。如果返回错误，说明该节点没有成功加入集群。
 func (m *Members) Join(existing []string) (int, error) {
 	numSuccess := 0

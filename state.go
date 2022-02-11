@@ -230,7 +230,7 @@ START:
 	m.ProbeNode(&node)
 }
 
-// ProbeNodeByAddr OK
+// ProbeNodeByAddr  only by test
 func (m *Members) ProbeNodeByAddr(Addr string) {
 	m.NodeLock.RLock()
 	n := m.NodeMap[Addr]
@@ -336,18 +336,14 @@ func (m *Members) SetProbeChannels(seqNo uint32, ackCh chan AckMessage, nackCh c
 	})
 }
 
-// SetAckHandler is used to attach a handler to be invoked when an ack with a
-// given sequence number is received. If a timeout is reached, the handler is
-// deleted. This is used for indirect pings so does not configure a function
-// for nacks.
+// SetAckHandler 是用来附加一个处理程序，当收到一个给定序列号的ack时被调用。
+// 序列号的ack时调用的处理程序。如果达到超时，处理程序将被删除。这用于间接ping，
+// 所以不配置nacks的函数。
 func (m *Members) SetAckHandler(seqNo uint32, ackFn func([]byte, time.Time), timeout time.Duration) {
-	// Add the handler
 	ah := &AckHandler{ackFn, nil, nil}
 	m.AckLock.Lock()
 	m.AckHandlers[seqNo] = ah
 	m.AckLock.Unlock()
-
-	// Setup a reaping routing
 	ah.timer = time.AfterFunc(timeout, func() {
 		m.AckLock.Lock()
 		delete(m.AckHandlers, seqNo)

@@ -35,9 +35,9 @@ const (
 	UserMsg     // 用户消息、不处理
 	CompressMsg // 压缩消息
 	EncryptMsg  // 加密消息
-	NAckRespMsg
-	HasCrcMsg // 校验消息
-	ErrMsg    // 错误消息
+	NAckRespMsg // 没有收到确认消息
+	HasCrcMsg   // 校验消息
+	ErrMsg      // 错误消息
 )
 
 const (
@@ -108,18 +108,15 @@ func (p *Ping) PingCopy(SourceAddr string) TempPing {
 	}
 }
 
-// IndirectPingReq   sent to an indirect node
+// IndirectPingReq   发送到间接节点
 type IndirectPingReq struct {
 	SeqNo  uint32
-	Target []byte
-	Port   uint16
+	Target []byte // 需要探活的节点IP
+	Port   uint16 // 需要探活的节点端口
 
-	// Node is sent so the target can verify they are
-	// the intended recipient. This is to protect against an agent
-	// restart with a new name.
-	Node string
+	Node string // 需要探活的节点
 
-	Nack bool // true if we'd like a nack back
+	Nack bool // 最大协议>=4 需要设置为TRUE    , 没有收到 ACK消息
 
 	SourceAddr []byte `codec:",omitempty"` // Source Address, used for a direct reply
 	SourcePort uint16 `codec:",omitempty"` // Source Port, used for a direct reply
@@ -208,47 +205,6 @@ type msgHandoff struct {
 	from    net.Addr
 }
 
-// encodeAndSendMsg 编码并发送消息
-func (m *Members) encodeAndSendMsg(a pkg.Address, msgType MessageType, msg interface{}) error {
-	out, err := Encode(msgType, msg)
-	if err != nil {
-		return err
-	}
-	if err := m.sendMsg(a, out.Bytes()); err != nil {
-		return err
-	}
-	return nil
-}
-
-// 发送消息包到另一个节点
-func (m *Members) sendMsg(a pkg.Address, msg []byte) error {
-	// Check if we can piggy back any messages
-	// 检查我们是否可以捎带任何信息
-	// 1400 - 消息长度 - 2 - [ label类型 (1byte) + label长度(1byte) + label大小 ] - 29
-	bytesAvail := m.Config.UDPBufferSize - len(msg) - CompoundHeaderOverhead - LabelOverhead(m.Config.Label)
-	if m.Config.EncryptionEnabled() && m.Config.GossipVerifyOutgoing {
-		bytesAvail -= encryptOverhead(m.EncryptionVersion()) // Version: 1, IV: 12, Tag: 16   // 29
-	}
-	// 额外可以发送的消息，再一次UDP发包过程中
-	extra := m.getBroadcasts(CompoundOverhead, bytesAvail) // 2  1303
-
-	// Fast path if nothing to piggypack
-	if len(extra) == 0 {
-		return m.RawSendMsgPacket(a, nil, msg)
-	}
-
-	// Join all the messages
-	msgs := make([][]byte, 0, 1+len(extra))
-	msgs = append(msgs, msg)
-	msgs = append(msgs, extra...)
-
-	// Create a compound message
-	compound := MakeCompoundMessage(msgs)
-
-	// Send the message
-	return m.RawSendMsgPacket(a, nil, compound.Bytes())
-}
-
 // readUserMsg 从TCP流中解码UserMsg
 func (m *Members) readUserMsg(bufConn io.Reader, dec *codec.Decoder) error {
 	var header UserMsgHeader
@@ -262,7 +218,7 @@ func (m *Members) readUserMsg(bufConn io.Reader, dec *codec.Decoder) error {
 		bytes, err := io.ReadAtLeast(bufConn, userBuf, header.UserMsgLen)
 		if err == nil && bytes != header.UserMsgLen {
 			err = fmt.Errorf(
-				"Failed to read full user message (%d / %d)",
+				"读取完整的用户信息失败 (%d / %d)",
 				bytes, header.UserMsgLen)
 		}
 		if err != nil {
@@ -278,10 +234,8 @@ func (m *Members) readUserMsg(bufConn io.Reader, dec *codec.Decoder) error {
 	return nil
 }
 
-// SendPingAndWaitForAck makes a stream connection to the given Address, sends
-// a Ping, and waits for an ack. All of this is done as a series of blocking
-// operations, given the Deadline. The bool return parameter is true if we
-// we able to round trip a Ping to the other node.
+// SendPingAndWaitForAck 与给定的地址建立一个流连接，发送 Ping，并等待Ack。所有这些都是在给定的Deadline下，以一系列阻塞操作的方式完成的。
+// 如果我们能够往返于Ping到另一个节点，则bool返回参数为true。
 func (m *Members) SendPingAndWaitForAck(a pkg.Address, ping Ping, Deadline time.Time) (bool, error) {
 	if a.Name == "" && m.Config.RequireNodeNames {
 		return false, errNodeNamesAreRequired
@@ -329,6 +283,46 @@ func (m *Members) SendPingAndWaitForAck(a pkg.Address, ping Ping, Deadline time.
 }
 
 // ------------------------------------------ OVER ---------------------------------------
+
+// encodeAndSendMsg 编码并发送消息
+func (m *Members) encodeAndSendMsg(a pkg.Address, msgType MessageType, msg interface{}) error {
+	out, err := Encode(msgType, msg)
+	if err != nil {
+		return err
+	}
+	if err := m.sendMsg(a, out.Bytes()); err != nil {
+		return err
+	}
+	return nil
+}
+
+// 发送消息包到另一个节点,附加广播消息
+func (m *Members) sendMsg(a pkg.Address, msg []byte) error {
+	// Check if we can piggy back any messages
+	// 检查我们是否可以捎带任何信息
+	// 1400 - 消息长度 - 2 - [ label类型 (1byte) + label长度(1byte) + label大小 ] - 29
+	bytesAvail := m.Config.UDPBufferSize - len(msg) - CompoundHeaderOverhead - LabelOverhead(m.Config.Label)
+	if m.Config.EncryptionEnabled() && m.Config.GossipVerifyOutgoing {
+		bytesAvail -= encryptOverhead(m.EncryptionVersion()) // Version: 1, IV: 12, Tag: 16   // 29
+	}
+	// 额外可以发送的消息，再一次UDP发包过程中
+	extra := m.getBroadcasts(CompoundOverhead, bytesAvail) // 2  1303
+
+	// Fast path if nothing to piggypack
+	if len(extra) == 0 {
+		return m.RawSendMsgPacket(a, nil, msg)
+	}
+
+	// Join all the messages
+	msgs := make([][]byte, 0, 1+len(extra))
+	msgs = append(msgs, msg)
+	msgs = append(msgs, extra...)
+
+	// 创建组合消息
+	compound := MakeCompoundMessage(msgs)
+
+	return m.RawSendMsgPacket(a, nil, compound.Bytes())
+}
 
 // SendUserMsg 是用来将用户信息流转到另一个主机。
 func (m *Members) SendUserMsg(a pkg.Address, sendBuf []byte) error {

@@ -144,10 +144,7 @@ s:
                 handleIndirectPing
                 
     
-    ↑---->  返回耗时、错误
-a (Ping)--->1、PingMsg---> b(handlePing)
-    ↑                          ↓
-    ↑<----  2、AckRespMsg  <---↓
+
     
     
     
@@ -187,5 +184,17 @@ c:
     以及配置了 m.Config.Delegate.GetBroadcasts   任何一个可以广播的行为
     
     程序本身没有发送UserMsg
-    
+
+
+周期性的向每个节点发送pingMsg
+    a (ProbeNode)--->1、PingMsg---> b(handlePing) --->3、IndirectPingReq ---> c(handleIndirectPing)
+        ↑                               ↓          |->3、IndirectPingReq ---> d(handleIndirectPing)
+        ↑                               ↓          |->3、IndirectPingReq ---> d(handleIndirectPing)
+        ↑<----     2、AckRespMsg     <---↓          |->3、IndirectPingReq ---> e(handleIndirectPing)  --->3.1、PingMsg---> b(handlePing) 
+                                                                         ↓---->1、收到ack               ↑<-    AckRespMsg    <-↓
+                                    a(handleNack) <-----------------     ↓---->2、没有收到ack,向A返回NACK消息      
+                                             
+       --->SendPingAndWaitForAck---> true return  \ false awarenessDelta+?    
+       --->SuspectNode
+
 ```

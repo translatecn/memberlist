@@ -9,110 +9,19 @@ import (
 	"time"
 )
 
+// ----------------------------------------- SERVER -------------------------------------------------
+
+//OK
 func (m *Members) handleNack(buf []byte, from net.Addr) {
 	var nack NAckResp
 	if err := Decode(buf, &nack); err != nil {
-		m.Logger.Printf("[错误] memberlist: Failed to Decode nack response: %s %s", err, pkg.LogAddress(from))
+		m.Logger.Printf("[错误] memberlist:解码失败: %s %s", err, pkg.LogAddress(from))
 		return
 	}
 	m.InvokeNAckHandler(nack)
 }
 
-func (m *Members) handleIndirectPing(buf []byte, from net.Addr) {
-	var ind IndirectPingReq
-	if err := Decode(buf, &ind); err != nil {
-		m.Logger.Printf("[错误] memberlist: Failed to Decode indirect Ping request: %s %s", err, pkg.LogAddress(from))
-		return
-	}
-
-	// For proto versions < 2, there is no Port provided. Mask old
-	// behavior by using the configured Port.
-	if m.ProtocolVersion() < 2 || ind.Port == 0 {
-		ind.Port = uint16(m.Config.BindPort)
-	}
-
-	// Send a Ping to the correct host.
-	localSeqNo := m.NextSeqNo()
-	selfAddr, selfPort := m.getAdvertise()
-	ping := Ping{
-		SeqNo: localSeqNo,
-		Node:  ind.Node,
-		// The outbound message is Addressed FROM us.
-		SourceAddr: selfAddr,
-		SourcePort: selfPort,
-		SourceNode: m.Config.Name,
-	}
-
-	// Forward the ack back to the requestor. If the request encodes an origin
-	// use that otherwise assume that the other end of the UDP socket is
-	// usable.
-	indAddr := ""
-	if len(ind.SourceAddr) > 0 && ind.SourcePort > 0 {
-		indAddr = pkg.JoinHostPort(net.IP(ind.SourceAddr).String(), ind.SourcePort)
-	} else {
-		indAddr = from.String()
-	}
-
-	// Setup a response handler to relay the ack
-	cancelCh := make(chan struct{})
-	respHandler := func(payload []byte, timestamp time.Time) {
-		// Try to prevent the nack if we've caught it in time.
-		close(cancelCh)
-
-		ack := AckResp{ind.SeqNo, nil}
-		a := pkg.Address{
-			Addr: indAddr,
-			Name: ind.SourceNode,
-		}
-		if err := m.encodeAndSendMsg(a, AckRespMsg, &ack); err != nil {
-			m.Logger.Printf("[错误] memberlist: Failed to forward ack: %s %s", err, pkg.LogStringAddress(indAddr))
-		}
-	}
-	m.SetAckHandler(localSeqNo, respHandler, m.Config.ProbeTimeout)
-
-	Addr := pkg.JoinHostPort(net.IP(ind.Target).String(), ind.Port)
-	a := pkg.Address{
-		Addr: Addr,
-		Name: ind.Node,
-	}
-	if err := m.encodeAndSendMsg(a, PingMsg, &ping); err != nil {
-		m.Logger.Printf("[错误] memberlist: Failed to send indirect Ping: %s %s", err, pkg.LogStringAddress(indAddr))
-	}
-
-	// Setup a timer to fire off a nack if no ack is seen in time.
-	if ind.Nack {
-		go func() {
-			select {
-			case <-cancelCh:
-				return
-			case <-time.After(m.Config.ProbeTimeout):
-				nack := NAckResp{ind.SeqNo}
-				a := pkg.Address{
-					Addr: indAddr,
-					Name: ind.SourceNode,
-				}
-				if err := m.encodeAndSendMsg(a, NAckRespMsg, &nack); err != nil {
-					m.Logger.Printf("[错误] memberlist: Failed to send nack: %s %s", err, pkg.LogStringAddress(indAddr))
-				}
-			}
-		}()
-	}
-}
-
-// InvokeAckHandler 如果有相关的ack处理程序，则调用一个ack处理程序，并立即收获处理程序。
-func (m *Members) InvokeAckHandler(ack AckResp, timestamp time.Time) {
-	m.AckLock.Lock()
-	_ = m.SetProbeChannels // 将待确认加入AckHandlers
-	ah, ok := m.AckHandlers[ack.SeqNo]
-	delete(m.AckHandlers, ack.SeqNo)
-	m.AckLock.Unlock()
-	if !ok {
-		return
-	}
-	ah.timer.Stop()
-	ah.ackFn(ack.Payload, timestamp)
-}
-
+// InvokeNAckHandler OK
 func (m *Members) InvokeNAckHandler(nack NAckResp) {
 	m.AckLock.Lock()
 	ah, ok := m.AckHandlers[nack.SeqNo]
@@ -120,10 +29,90 @@ func (m *Members) InvokeNAckHandler(nack NAckResp) {
 	if !ok || ah.nackFn == nil {
 		return
 	}
+	_ = m.SetProbeChannels
+	_ = m.ProbeNode
 	ah.nackFn()
 }
 
-// ----------------------------------------- SERVER -------------------------------------------------
+// OK
+func (m *Members) handleIndirectPing(buf []byte, from net.Addr) {
+	// 发送代码搜
+	//  m.encodeAndSendMsg(peer.FullAddress(), IndirectPingMsg
+	var ind IndirectPingReq
+	if err := Decode(buf, &ind); err != nil {
+		m.Logger.Printf("[错误] memberlist:解码间接PING失败: %s %s", err, pkg.LogAddress(from))
+		return
+	}
+	if m.ProtocolVersion() < 2 || ind.Port == 0 {
+		ind.Port = uint16(m.Config.BindPort)
+	}
+
+	// 项目标节点发送ping
+	localSeqNo := m.NextSeqNo()
+	selfAddr, selfPort := m.getAdvertise()
+	ping := Ping{
+		SeqNo: localSeqNo,
+		Node:  ind.Node,
+		// 呼出的信息是从我们这里发出的。
+		SourceAddr: selfAddr,
+		SourcePort: selfPort,
+		SourceNode: m.Config.Name,
+	}
+
+	// 将ack转发回请求者。
+	// 如果请求编码为一个原点，则使用该原点，否则假定UDP套接字的另一端是可用的。
+	indAddr := ""
+	if len(ind.SourceAddr) > 0 && ind.SourcePort > 0 {
+		indAddr = pkg.JoinHostPort(net.IP(ind.SourceAddr).String(), ind.SourcePort)
+	} else {
+		indAddr = from.String()
+	}
+
+	// 设置一个响应处理程序来转发Ack
+	cancelCh := make(chan struct{})
+	_ = m.InvokeAckHandler
+	ackFc := func(payload []byte, timestamp time.Time) {
+		close(cancelCh)
+
+		ack := AckResp{ind.SeqNo, nil}
+		a := pkg.Address{ // 发送方
+			Addr: indAddr,
+			Name: ind.SourceNode,
+		}
+		if err := m.encodeAndSendMsg(a, AckRespMsg, &ack); err != nil {
+			m.Logger.Printf("[错误] memberlist:想发送方返回ACK失败: %s %s", err, pkg.LogStringAddress(indAddr))
+		}
+	}
+	m.SetAckHandler(localSeqNo, ackFc, m.Config.ProbeTimeout)
+
+	Addr := pkg.JoinHostPort(net.IP(ind.Target).String(), ind.Port)
+	a := pkg.Address{
+		Addr: Addr, // 探活地址
+		Name: ind.Node,
+	}
+	if err := m.encodeAndSendMsg(a, PingMsg, &ping); err != nil {
+		m.Logger.Printf("[错误] memberlist: 发送间接PING失败: %s %s", err, pkg.LogStringAddress(indAddr))
+	}
+
+	// 设置一个定时器，如果没有及时看到ack，就发射一个nack。
+	if ind.Nack { // 发送方需不要返回NACK信号
+		go func() {
+			select {
+			case <-cancelCh: // 收到了目标节点返回的ACK消息，就会关闭 cancelCh
+				return
+			case <-time.After(m.Config.ProbeTimeout):
+				nack := NAckResp{ind.SeqNo}
+				a := pkg.Address{
+					Addr: indAddr,
+					Name: ind.SourceNode,
+				} // 如果超时了，就像发送节点返回Nack 消息
+				if err := m.encodeAndSendMsg(a, NAckRespMsg, &nack); err != nil {
+					m.Logger.Printf("[错误] memberlist: 发送nack失败: %s %s", err, pkg.LogStringAddress(indAddr))
+				}
+			}
+		}()
+	}
+}
 
 // PacketListen 将包从传输中取出，并处理，server端
 func (m *Members) PacketListen() {
@@ -219,6 +208,8 @@ func (m *Members) HandleCommand(buf []byte, from net.Addr, timestamp time.Time) 
 	case AckRespMsg: // ✅ Ping确认消息
 		m.handleAck(buf, from, timestamp)
 	case NAckRespMsg:
+		//发送方
+		_ = m.handleIndirectPing
 		m.handleNack(buf, from)
 	case SuspectMsg: // ✅ 质疑消息
 		fallthrough
@@ -284,7 +275,7 @@ func (m *Members) handleCompound(buf []byte, from net.Addr, timestamp time.Time)
 	}
 }
 
-// 确认PING 响应
+// 给PING的发送方，发出确认PING 响应
 func (m *Members) handleAck(buf []byte, from net.Addr, timestamp time.Time) {
 	var ack AckResp
 	if err := Decode(buf, &ack); err != nil {
@@ -329,6 +320,20 @@ func (m *Members) handlePing(buf []byte, from net.Addr) {
 	}
 }
 
+// InvokeAckHandler 如果有相关的ack处理程序，则调用一个ack处理程序，并立即收获处理程序。
+func (m *Members) InvokeAckHandler(ack AckResp, timestamp time.Time) {
+	m.AckLock.Lock()
+	_ = m.SetProbeChannels // 将待确认加入AckHandlers
+	ah, ok := m.AckHandlers[ack.SeqNo]
+	delete(m.AckHandlers, ack.SeqNo)
+	m.AckLock.Unlock()
+	if !ok {
+		return
+	}
+	ah.timer.Stop()
+	ah.ackFn(ack.Payload, timestamp)
+}
+
 // ----------------------------------------- CLIENT -------------------------------------------------
 
 // ProbeNode 单个节点的故障检查。
@@ -347,7 +352,7 @@ func (m *Members) ProbeNode(node *NodeState) {
 		SourcePort: selfPort,
 		SourceNode: m.Config.Name,
 	}
-	ackCh := make(chan AckMessage, m.Config.IndirectChecks+1)
+	ackCh := make(chan AckMessage, m.Config.IndirectChecks+1) // 间接检查的次数+ 直接检查的次数
 	nackCh := make(chan struct{}, m.Config.IndirectChecks+1)
 	m.SetProbeChannels(ping.SeqNo, ackCh, nackCh, probeInterval)
 
@@ -355,31 +360,33 @@ func (m *Members) ProbeNode(node *NodeState) {
 	Deadline := sent.Add(probeInterval)
 	Addr := node.Address()
 
-	// 安排我们的自我认知得到更新。
-	var awarenessDelta int
+	var awarenessDelta int // 警觉增量
 	defer func() {
 		m.Awareness.ApplyDelta(awarenessDelta)
 	}()
 	if node.State == StateAlive {
-		if err := m.encodeAndSendMsg(node.FullAddress(), PingMsg, &ping); err != nil {
-			m.Logger.Printf("[错误] memberlist: Failed to send Ping: %s", err)
-			if FailedRemote(err) {
-				goto HANDLE_REMOTE_FAILURE
+		if err := m.encodeAndSendMsg(node.FullAddress(), PingMsg, &ping); err != nil { // 有可能携带其他的广播消息
+			m.Logger.Printf("[错误] memberlist: 发送PING失败: %s", err)
+			if FailedRemote(err) { // 是不是服务崩了
+				goto HandleRemoteFailure
 			} else {
+				// 其他错误
 				return
 			}
 		}
 	} else {
+		// 节点不是StateAlive状态的前提下
+		// 发送PING 、Suspect 组合消息
 		var msgs [][]byte
 		if buf, err := Encode(PingMsg, &ping); err != nil {
-			m.Logger.Printf("[错误] memberlist: Failed to Encode Ping message: %s", err)
+			m.Logger.Printf("[错误] memberlist:编码失败: %s", err)
 			return
 		} else {
 			msgs = append(msgs, buf.Bytes())
 		}
 		s := Suspect{Incarnation: node.Incarnation, Node: node.Name, From: m.Config.Name}
 		if buf, err := Encode(SuspectMsg, &s); err != nil {
-			m.Logger.Printf("[错误] memberlist: Failed to Encode Suspect message: %s", err)
+			m.Logger.Printf("[错误] memberlist:编码失败: %s", err)
 			return
 		} else {
 			msgs = append(msgs, buf.Bytes())
@@ -387,59 +394,52 @@ func (m *Members) ProbeNode(node *NodeState) {
 
 		compound := MakeCompoundMessage(msgs)
 		if err := m.RawSendMsgPacket(node.FullAddress(), &node.Node, compound.Bytes()); err != nil {
-			m.Logger.Printf("[错误] memberlist: Failed to send compound Ping and Suspect message to %s: %s", Addr, err)
+			m.Logger.Printf("[错误] memberlist:发送compound Ping and Suspect message 失败 %s: %s", Addr, err)
 			if FailedRemote(err) {
-				goto HANDLE_REMOTE_FAILURE
+				goto HandleRemoteFailure
 			} else {
 				return
 			}
 		}
 	}
 
-	// Arrange for our self-awareness to get updated. At this point we've
-	// sent the Ping, so any return statement means the probe succeeded
-	// which will improve our health until we get to the failure scenarios
-	// at the end of this function, which will alter this delta variable
-	// accordingly.
+	// 安排我们的自我警觉得到更新。在这一点上，我们已经发送了Ping，所以任何返回语句都意味着探测成功，这将改善我们的健康状况，
+	// 直到我们在这个函数的结尾处遇到失败情况，这将相应地改变这个delta变量。
 	awarenessDelta = -1
 
-	// Wait for response or round-trip-time.
+	// Wait for 响应 or 往返时间.
 	select {
 	case v := <-ackCh:
+		_ = m.handleAck        // 接收
+		_ = m.SetProbeChannels // 设置   成功发送TRUE，超时发送FALSE   超时时间 ProbeInterval
 		if v.Complete == true {
 			if m.Config.Ping != nil {
-				rtt := v.Timestamp.Sub(sent)
+				rtt := v.Timestamp.Sub(sent) // 往返时间
 				m.Config.Ping.NotifyPingComplete(&node.Node, rtt, v.Payload)
 			}
 			return
 		}
-
-		// As an edge case, if we get a timeout, we need to re-enqueue it
-		// here to break out of the select below.
 		if v.Complete == false {
+			// 无缺确保m.Config.ProbeInterval 与m.Config.ProbeTimeout 谁先到来,重新扔回channel
 			ackCh <- v
 		}
-	case <-time.After(m.Config.ProbeTimeout):
-		// Note that we don't scale this timeout based on awareness and
-		// the health score. That's because we don't really expect waiting
-		// longer to help get UDP through. Since health does extend the
-		// probe interval it will give the TCP fallback more time, which
-		// is more active in dealing with lost packets, and it gives more
-		// time to wait for indirect acks/nacks.
-		m.Logger.Printf("[DEBUG] memberlist: Failed Ping: %s (timeout reached)", node.Name)
+	case <-time.After(m.Config.ProbeTimeout): //
+		// 请注意，我们没有根据警觉和健康评分来调整这个超时。这是因为我们并不指望等待的时间长能帮助UDP通过。
+		// 由于健康状况确实延长了探测间隔，它将给TCP回退更多的时间，它在处理丢失的数据包时更加积极，而且它给了更多的时间来等待间接的acks/nacks。
+		m.Logger.Printf("[DEBUG] memberlist: 失败 Ping: %s (timeout reached)", node.Name)
 	}
-
-HANDLE_REMOTE_FAILURE:
-	// Get some random live Nodes.
+	// 探测失败
+HandleRemoteFailure:
+	//获取几个随机的存活结点
 	m.NodeLock.RLock()
 	kNodes := KRandomNodes(m.Config.IndirectChecks, m.Nodes, func(n *NodeState) bool {
 		return n.Name == m.Config.Name ||
 			n.Name == node.Name ||
 			n.State != StateAlive
-	})
+	}) // 3 个
 	m.NodeLock.RUnlock()
 
-	// Attempt an indirect Ping.
+	// 尝试间接Ping。不再直接发送到目标节点，而是询问其他节点目标节点的状态
 	expectedNacks := 0
 	selfAddr, selfPort = m.getAdvertise()
 	ind := IndirectPingReq{
@@ -452,14 +452,13 @@ HANDLE_REMOTE_FAILURE:
 		SourceNode: m.Config.Name,
 	}
 	for _, peer := range kNodes {
-		// We only expect nack to be sent from peers who understand
-		// version 4 of the protocol.
 		if ind.Nack = peer.PMax >= 4; ind.Nack {
 			expectedNacks++
 		}
-
+		// 搜  case IndirectPingMsg:
 		if err := m.encodeAndSendMsg(peer.FullAddress(), IndirectPingMsg, &ind); err != nil {
-			m.Logger.Printf("[错误] memberlist: Failed to send indirect Ping: %s", err)
+			_ = m.handleIndirectPing
+			m.Logger.Printf("[错误] memberlist:间接Ping失败: %s", err)
 		}
 	}
 
@@ -468,15 +467,19 @@ HANDLE_REMOTE_FAILURE:
 	// but can still speak TCP (which also means they can possibly report
 	// misinformation to other Nodes via anti-entropy), avoiding flapping in
 	// the cluster.
+	// 同时尝试通过TCP直接联系该节点。这有助于防止混乱的客户端被隔离在UDP流量之外，
+	// 但仍然可以讲TCP（这也意味着他们有可能通过反熵向其他节点报告错误信息），避免集群中的拍打。
 	//
 	// This is a little unusual because we will attempt a TCP Ping to any
 	// member who understands version 3 of the protocol, regardless of
 	// which 协议版本 we are speaking. That's why we've included a
 	// Config option to turn this off if desired.
+	// 这有点不寻常，因为我们将尝试向任何理解协议版本3的成员进行TCP Ping，而不管我们说的是哪个协议版本。这就是为什么我们包括一个配置选项，如果需要的话，可以关闭这个功能。
 	fallbackCh := make(chan bool, 1)
 
-	disableTcpPings := m.Config.DisableTcpPings ||
-		(m.Config.DisableTcpPingsForNode != nil && m.Config.DisableTcpPingsForNode(node.Name))
+	disableTcpPings := m.Config.DisableTcpPings || (m.Config.DisableTcpPingsForNode != nil && m.Config.DisableTcpPingsForNode(node.Name))
+	// 是否禁止使用TCP Ping
+	_ = ProtocolVersionMax
 	if (!disableTcpPings) && (node.PMax >= 3) {
 		go func() {
 			defer close(fallbackCh)
@@ -486,7 +489,7 @@ HANDLE_REMOTE_FAILURE:
 				if ne, ok := err.(net.Error); ok && ne.Timeout() {
 					to = fmt.Sprintf("timeout %s: ", probeInterval)
 				}
-				m.Logger.Printf("[错误] memberlist: Failed fallback Ping: %s%s", to, err)
+				m.Logger.Printf("[错误] memberlist: 失败 fallback Ping: %s%s", to, err)
 			} else {
 				fallbackCh <- didContact
 			}
@@ -495,45 +498,37 @@ HANDLE_REMOTE_FAILURE:
 		close(fallbackCh)
 	}
 
-	// Wait for the acks or timeout. Note that we don't check the fallback
-	// channel here because we want to issue a warning below if that's the
-	// *only* way we hear back from the peer, so we have to let this time
-	// out first to allow the normal UDP-based acks to come in.
+	// UDP间接PING  可能会收到ack信号
 	select {
-	case v := <-ackCh:
-		if v.Complete == true {
+	case v := <-ackCh: // 只判断第一条返回的消息
+		if v.Complete == true { // 超时返回FALSE
 			return
 		}
 	}
-
-	// Finally, poll the fallback channel. The timeouts are set such that
-	// the channel will have something or be closed without having to wait
-	// any additional time here.
-	for didContact := range fallbackCh {
+	// UDP 没有成功
+	for didContact := range fallbackCh { // 阻塞等待结果
 		if didContact {
-			m.Logger.Printf("[WARN] memberlist: Was able to connect to %s but other probes failed, network may be misconfigured", node.Name)
+			m.Logger.Printf("[WARN] memberlist: 能够连接到%s，但其他探测失败，网络可能被错误配置了", node.Name)
 			return
 		}
 	}
+	// TCP 没有成功
 
-	// Update our self-awareness based on the results of this failed probe.
-	// If we don't have peers who will send nacks then we penalize for any
-	// failed probe as a simple health metric. If we do have peers to nack
-	// verify, then we can use that as a more sophisticated measure of self-
-	// health because we assume them to be working, and they can help us
-	// decide if the probed node was really Dead or if it was something wrong
-	// with ourselves.
+	// 根据这次失败的探测结果，更新我们的自我警觉。如果我们没有同伴会发送nacks，那么我们会对任何失败的探测进行惩罚，
+	// 作为一个简单的健康指标。如果我们有对等人进行nack验证，那么我们可以把它作为一个更复杂的自我健康度量，
+	// 因为我们假设他们在工作，他们可以帮助我们决定被探测的节点是否真的死亡，或者是我们自己出了问题。
 	awarenessDelta = 0
-	if expectedNacks > 0 {
+	if expectedNacks > 0 { //期望收到的 未确认消息
 		if nackCount := len(nackCh); nackCount < expectedNacks {
-			awarenessDelta += (expectedNacks - nackCount)
+			// expectedNacks - nackCount 有几个节点没有发送Nack消息  (可能是网络延迟、或根本就没有发送)
+			awarenessDelta += expectedNacks - nackCount
 		}
 	} else {
 		awarenessDelta += 1
 	}
 
-	// No acks received from target, Suspect it as failed.
-	m.Logger.Printf("[INFO] memberlist: Suspect %s has failed, no acks received", node.Name)
+	// 没有收到来自目标的ack消息，怀疑是失败的。
+	m.Logger.Printf("[INFO] memberlist: 怀疑 %s has failed,没有收到ack消息", node.Name)
 	s := Suspect{Incarnation: node.Incarnation, Node: node.Name, From: m.Config.Name}
 	m.SuspectNode(&s)
 }

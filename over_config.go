@@ -84,7 +84,7 @@ type Config struct {
 	DisableTcpPingsForNode func(nodeName string) bool `json:"-"`
 
 	// AwarenessMaxMultiplier
-	// 当节点意识到自己可能降级，无法满足可靠探测其他节点的软实时要求时，会增加探测间隔。
+	// 当节点警觉到自己可能降级，无法满足可靠探测其他节点的软实时要求时，会增加探测间隔。
 	AwarenessMaxMultiplier int
 
 	// GossipInterval 节点间消息探测的间隔
