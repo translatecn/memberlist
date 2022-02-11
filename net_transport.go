@@ -120,7 +120,7 @@ func NewNetTransport(config *NetTransportConfig) (*NetTransport, error) {
 		if err != nil {
 			return nil, fmt.Errorf("启动UDP listener失败 %q Port %d: %v", Addr, port, err)
 		}
-		if err := setUDPRecvBuf(udpLn); err != nil {
+		if err := SetUDPRecvBuf(udpLn); err != nil {
 			return nil, fmt.Errorf("调整UDP缓冲区大小失败: %v", err)
 		}
 		t.UdpListeners = append(t.UdpListeners, udpLn)
@@ -313,8 +313,8 @@ func (t *NetTransport) UdpListen(udpLn *net.UDPConn) {
 	}
 }
 
-// 调整UDP接收窗口
-func setUDPRecvBuf(c *net.UDPConn) error {
+// SetUDPRecvBuf 调整UDP接收窗口
+func SetUDPRecvBuf(c *net.UDPConn) error {
 	size := udpRecvBufSize
 	var err error
 	for size > 0 {

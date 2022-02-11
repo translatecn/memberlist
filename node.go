@@ -31,9 +31,9 @@ func (m *Members) SuspectNode(s *Suspect) {
 	if timer, ok := m.NodeTimers[s.Node]; ok {
 		// 从From发出的对s.Node的质疑
 		// 初始不存在
-		_=m.AliveNode
-		_=m.DeadNode // 都有可能清空该timer
-		if timer.Confirm(s.From) {// 再次从s.From 收到了 s.Node 的质疑
+		_ = m.AliveNode
+		_ = m.DeadNode             // 都有可能清空该timer
+		if timer.Confirm(s.From) { // 再次从s.From 收到了 s.Node 的质疑
 			m.EncodeBroadcast(s.Node, SuspectMsg, s)
 		}
 		return
@@ -49,7 +49,7 @@ func (m *Members) SuspectNode(s *Suspect) {
 		m.Logger.Printf("[WARN] memberlist: 反驳质疑消息 (from: %s)", s.From)
 		return
 	} else {
-		m.EncodeBroadcast(s.Node, SuspectMsg, s)// 广播质疑消息
+		m.EncodeBroadcast(s.Node, SuspectMsg, s) // 广播质疑消息
 	}
 
 	// 更新状态

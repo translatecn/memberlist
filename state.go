@@ -351,8 +351,6 @@ func (m *Members) SetAckHandler(seqNo uint32, ackFn func([]byte, time.Time), tim
 	})
 }
 
-
-
 // Refute 当收到传来的关于本节点被怀疑或死亡的信息时，会发送一个Alive gossip message。
 // 它将确保incarnation超过给定的 accusedInc 值，或者你可以提供 0 来获取下一个incarnation。
 // 这将改变传入的节点状态，所以必须在持有NodeLock情况下调用这个。

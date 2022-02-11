@@ -40,7 +40,7 @@ type Suspicion struct {
 // 从节点将被排除在确认之外，因为我们可能会得到我们自己的怀疑消息的流言蜚语。如果没有要求确认，将使用最小时间（k <= 0）。
 func newSuspicion(from string, k int, min time.Duration, max time.Duration, fn func(int)) *Suspicion {
 	s := &Suspicion{
-		SuspectMax:             int32(k), // 一般是2
+		SuspectMax:    int32(k), // 一般是2
 		min:           min,
 		max:           max,
 		confirmations: make(map[string]struct{}),
@@ -90,7 +90,7 @@ func (s *Suspicion) Confirm(from string) bool {
 		return false
 	}
 	// 记录
-	s.confirmations[from] = struct{}{}// 又收到了来自其他节点的对目标节点的质疑
+	s.confirmations[from] = struct{}{} // 又收到了来自其他节点的对目标节点的质疑
 
 	// 考虑到当前的确认数，计算新的超时时间，并调整计时器。如果超时变成了负值，*并且我们可以干净地停止计时器，那么我们将从这里直接调用超时函数。
 	n := atomic.AddInt32(&s.SuspectAcceptNum, 1)

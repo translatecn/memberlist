@@ -109,7 +109,6 @@ OUTER:
 		idx := RandomOffset(n)
 		state := nodes[idx]
 
-
 		if exclude != nil && exclude(state) {
 			continue OUTER
 		}

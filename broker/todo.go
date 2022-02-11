@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/google/btree"
 	"github.com/hashicorp/go-sockaddr"
+	"github.com/hashicorp/memberlist"
 	"net"
 	"os"
 	"runtime"
@@ -59,9 +60,20 @@ func mai3n() {
 }
 
 func main() {
-	bt()
-	ns()
-	timer()
+	//bt()
+	//ns()
+	//timer()
+	udpSize()
+}
+
+func udpSize() {
+	udpLn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8000})
+	if err != nil {
+		fmt.Println(err)
+	}
+	if err := memberlist.SetUDPRecvBuf(udpLn); err != nil {
+		fmt.Println(err)
+	}
 }
 
 type A struct {
